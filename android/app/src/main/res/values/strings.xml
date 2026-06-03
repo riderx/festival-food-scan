@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Festival Food Scan</string>
+    <string name="title_activity_main">Festival Food Scan</string>
+    <string name="package_name">com.riderx.festivalfoodscan</string>
+    <string name="custom_url_scheme">com.riderx.festivalfoodscan</string>
+</resources>
