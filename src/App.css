@@ -1,4 +1,5 @@
 .app-shell {
+  height: 100dvh;
   min-height: 100svh;
   position: relative;
   overflow: hidden;
@@ -8,6 +9,11 @@
 
 .setup-mode {
   background: #0b1020;
+}
+
+.scan-mode {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
 }
 
 #camera-preview {
@@ -53,7 +59,7 @@
   justify-content: space-between;
   gap: 12px;
   padding:
-    max(calc(env(safe-area-inset-top, 0px) + 14px), 54px)
+    max(calc(env(safe-area-inset-top, 0px) + 12px), 52px)
     calc(env(safe-area-inset-right, 0px) + 18px)
     10px
     calc(env(safe-area-inset-left, 0px) + 18px);
@@ -78,7 +84,7 @@
 
 .brand-lockup {
   gap: 10px;
-  min-width: 176px;
+  min-width: 0;
   flex: 1 1 220px;
 }
 
@@ -334,18 +340,18 @@ button {
 }
 
 .scanner-stage {
-  min-height: calc(100svh - 302px);
+  min-height: 0;
   display: grid;
   place-items: center;
   padding:
-    28px
-    calc(env(safe-area-inset-right, 0px) + 28px)
-    28px
-    calc(env(safe-area-inset-left, 0px) + 28px);
+    16px
+    calc(env(safe-area-inset-right, 0px) + 24px)
+    16px
+    calc(env(safe-area-inset-left, 0px) + 24px);
 }
 
 .scan-frame {
-  width: min(68vw, 330px);
+  width: min(68vw, 36svh, 310px);
   aspect-ratio: 1;
   position: relative;
   display: grid;
@@ -674,10 +680,6 @@ button {
     padding-inline: 28px;
   }
 
-  .scanner-stage {
-    min-height: calc(100svh - 246px);
-  }
-
   .status-dock {
     padding-bottom: calc(env(safe-area-inset-bottom) + 22px);
   }
@@ -685,18 +687,28 @@ button {
 
 @media (max-width: 420px) {
   .meal-grid {
-    grid-template-columns: 1fr;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 6px;
+  }
+
+  .meal-grid button {
+    min-height: 44px;
+    padding: 0 8px;
+    font-size: 13px;
   }
 
   .setup-actions {
     display: grid;
-    grid-template-columns: 1fr;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .setup-start,
   .secondary-action {
+    min-width: 0;
     width: 100%;
     justify-content: center;
+    padding: 0 8px;
+    font-size: 13px;
   }
 
   .session-row {
@@ -704,13 +716,118 @@ button {
     grid-template-columns: 1fr;
   }
 
+  .top-bar {
+    gap: 8px;
+    padding-inline:
+      calc(env(safe-area-inset-left, 0px) + 12px)
+      calc(env(safe-area-inset-right, 0px) + 12px);
+  }
+
+  .brand-mark {
+    width: 32px;
+    height: 32px;
+  }
+
+  h1 {
+    font-size: 16px;
+  }
+
+  .brand-lockup p {
+    font-size: 12px;
+  }
+
+  .top-actions {
+    gap: 6px;
+  }
+
+  .mode-pill {
+    display: none;
+  }
+
+  .status-pill,
+  .secondary-action.top-exit {
+    height: 32px;
+    min-height: 32px;
+    padding-inline: 8px;
+    font-size: 12px;
+  }
+
   .result-strip {
     align-items: stretch;
     display: grid;
     grid-template-columns: 42px minmax(0, 1fr) 58px;
+    min-height: 68px;
+  }
+
+  .stats-grid > div {
+    min-height: 52px;
   }
 
   .recent-row {
     grid-template-columns: 98px minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 420px), (max-height: 760px) {
+  .scan-mode .recent-list {
+    display: none;
+  }
+}
+
+@media (max-height: 620px), (orientation: landscape) and (max-height: 480px) {
+  .setup-heading p,
+  .setup-meta {
+    display: none;
+  }
+}
+
+@media (orientation: landscape) and (max-height: 480px) {
+  .top-bar {
+    align-items: center;
+    min-height: 0;
+    padding:
+      max(calc(env(safe-area-inset-top, 0px) + 10px), 12px)
+      calc(env(safe-area-inset-right, 0px) + 16px)
+      8px
+      calc(env(safe-area-inset-left, 0px) + 16px);
+  }
+
+  .brand-mark {
+    width: 32px;
+    height: 32px;
+  }
+
+  h1 {
+    font-size: 16px;
+  }
+
+  .brand-lockup p {
+    font-size: 12px;
+  }
+
+  .setup-panel {
+    margin-top: 10px;
+    padding: 12px;
+  }
+
+  .setup-heading {
+    margin-bottom: 10px;
+  }
+
+  .meal-grid button {
+    min-height: 40px;
+  }
+
+  .setup-actions {
+    margin-top: 10px;
+  }
+
+  .result-strip {
+    min-height: 62px;
+  }
+
+  .stats-grid > div {
+    min-height: 48px;
+    padding-block: 6px;
   }
 }

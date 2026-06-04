@@ -360,7 +360,7 @@ function App() {
           <div className="setup-actions">
             <button className="primary-action setup-start" type="button" onClick={startSession} disabled={sessionState === 'loading'}>
               {sessionState === 'loading' ? <Loader2 size={17} aria-hidden="true" /> : <ScanLine size={17} aria-hidden="true" />}
-              Start scan session
+              Start scan
             </button>
             <button className="secondary-action" type="button" onClick={() => void syncQueuedWrites(true)}>
               <RefreshCw size={17} aria-hidden="true" />
