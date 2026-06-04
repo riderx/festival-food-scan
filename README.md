@@ -174,28 +174,6 @@ Queued writes are retried:
 4. when staff taps `Sync DB`,
 5. when staff leaves the session.
 
-## Other QR Payloads
-
-Plain email is best for this app. These also work in demo/webhook mode:
-
-```text
-PASS-123
-```
-
-```json
-{
-  "token": "ada@example.com",
-  "personId": "user-1",
-  "name": "Ada Lovelace",
-  "day": "2026-06-03",
-  "paid": true
-}
-```
-
-```text
-https://festival.example/food?token=ada@example.com&day=2026-06-03
-```
-
 ## Develop
 
 ```bash

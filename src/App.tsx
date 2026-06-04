@@ -69,7 +69,7 @@ const statusLabel = {
   error: 'Erreur',
 }
 
-const apiMode = hasNocoDbConfig() ? 'NocoDB' : import.meta.env.VITE_VALIDATE_ENDPOINT ? 'Webhook' : 'Demo'
+const apiMode = hasNocoDbConfig() ? 'NocoDB' : 'Demo'
 const autoReleaseMs = 1450
 
 function App() {

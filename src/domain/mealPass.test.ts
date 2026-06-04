@@ -1,6 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import {
-  normalizeValidationResponse,
   parseQrPayload,
   resetDemoStorageForTests,
   serviceDayFor,
@@ -8,27 +7,10 @@ import {
 } from './mealPass'
 
 describe('meal pass parsing', () => {
-  it('accepts a plain token', () => {
-    expect(parseQrPayload('PASS-123')).toEqual({
-      raw: 'PASS-123',
-      token: 'PASS-123',
-    })
-  })
-
-  it('accepts JSON QR payloads', () => {
-    expect(parseQrPayload('{"token":"abc","personId":"user-1","name":"Ada","paid":false}')).toMatchObject({
-      token: 'abc',
-      personId: 'user-1',
-      personLabel: 'Ada',
-      paid: false,
-    })
-  })
-
-  it('accepts URL QR payloads', () => {
-    expect(parseQrPayload('https://festival.test/food?token=abc&personId=user-1&day=2026-06-03')).toMatchObject({
-      token: 'abc',
-      personId: 'user-1',
-      day: '2026-06-03',
+  it('accepts a plain email QR payload', () => {
+    expect(parseQrPayload(' ada@example.com ')).toEqual({
+      raw: 'ada@example.com',
+      token: 'ada@example.com',
     })
   })
 })
@@ -37,22 +19,6 @@ describe('service day', () => {
   it('formats day in the configured festival timezone', () => {
     const day = serviceDayFor(new Date('2026-06-03T23:30:00.000Z'), 'Europe/Paris')
     expect(day).toBe('2026-06-04')
-  })
-})
-
-describe('validation normalization', () => {
-  it('maps flexible no-code DB status shapes', () => {
-    const result = normalizeValidationResponse(
-      { usedToday: true, personName: 'Ada Lovelace', message: 'Lunch already scanned' },
-      { raw: 'abc', token: 'abc' },
-      '2026-06-03',
-    )
-
-    expect(result).toMatchObject({
-      status: 'already_used',
-      personLabel: 'Ada Lovelace',
-      message: 'Lunch already scanned',
-    })
   })
 })
 
