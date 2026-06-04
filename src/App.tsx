@@ -264,7 +264,6 @@ function App() {
   })
 
   useEffect(() => {
-    setPendingCount(pendingScanCount())
     void syncQueuedWrites(false)
   }, [syncQueuedWrites])
 

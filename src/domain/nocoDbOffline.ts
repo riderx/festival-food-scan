@@ -106,7 +106,9 @@ export async function startScanSession(
   } catch (error) {
     const cached = loadSnapshot()
     if (!cached) {
-      throw new Error(error instanceof Error ? error.message : 'Cannot download NocoDB rows and no cache exists')
+      throw new Error(error instanceof Error ? error.message : 'Cannot download NocoDB rows and no cache exists', {
+        cause: error,
+      })
     }
 
     const snapshot = applyPendingScans({
