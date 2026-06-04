@@ -2,9 +2,7 @@ import {
   ArrowLeft,
   CheckCircle2,
   CircleDollarSign,
-  Cloud,
   CloudCheck,
-  CloudOff,
   CloudUpload,
   DatabaseZap,
   Loader2,
@@ -322,10 +320,16 @@ function App() {
             <NetworkIcon size={15} aria-hidden="true" />
             {networkLabel}
           </span>
-          <button className={`status-pill sync ${pendingCount > 0 ? 'queued' : 'synced'}`} type="button" onClick={() => void syncQueuedWrites(true)}>
+          <span className={`status-pill sync ${pendingCount > 0 ? 'queued' : 'synced'}`} aria-label={`Sync status: ${syncLabel}`}>
             <SyncIcon size={15} aria-hidden="true" />
             {syncLabel}
-          </button>
+          </span>
+          {sessionState === 'scanning' && (
+            <button className="secondary-action top-exit" type="button" onClick={leaveSession}>
+              <ArrowLeft size={15} aria-hidden="true" />
+              Leave
+            </button>
+          )}
         </div>
       </header>
 
@@ -385,17 +389,6 @@ function App() {
           </section>
 
           <aside className="status-dock" aria-live="polite">
-            <div className="session-row">
-              <button className="secondary-action compact" type="button" onClick={leaveSession}>
-                <ArrowLeft size={17} aria-hidden="true" />
-                Leave session
-              </button>
-              <button className="secondary-action compact" type="button" onClick={() => void syncQueuedWrites(true)}>
-                {pendingCount > 0 ? <CloudOff size={17} aria-hidden="true" /> : <Cloud size={17} aria-hidden="true" />}
-                {syncLabel}
-              </button>
-            </div>
-
             <div className={`result-strip ${currentScan ? currentStatus : 'idle'}`}>
               <span className="result-icon">
                 <CurrentIcon size={22} aria-hidden="true" />

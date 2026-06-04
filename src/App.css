@@ -150,7 +150,7 @@ h1 {
 }
 
 .status-pill.sync {
-  cursor: pointer;
+  cursor: default;
 }
 
 .status-pill.sync svg {
@@ -298,6 +298,11 @@ button {
 }
 
 .secondary-action.compact {
+  min-height: 34px;
+  padding: 0 10px;
+}
+
+.secondary-action.top-exit {
   min-height: 34px;
   padding: 0 10px;
 }
@@ -474,7 +479,7 @@ button {
 }
 
 .session-row {
-  justify-content: space-between;
+  justify-content: flex-start;
   gap: 8px;
   margin-bottom: 8px;
 }
@@ -680,7 +685,7 @@ button {
 
   .session-row {
     display: grid;
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: 1fr;
   }
 
   .result-strip {
