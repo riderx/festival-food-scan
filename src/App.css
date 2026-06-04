@@ -3,6 +3,10 @@
   position: relative;
   overflow: hidden;
   color: #f8fafc;
+  background: transparent;
+}
+
+.setup-mode {
   background: #0b1020;
 }
 
