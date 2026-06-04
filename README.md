@@ -2,9 +2,17 @@
 
 Tiny Capacitor app for festival staff to scan food QR codes and mark one selected meal as used.
 
-![Festival Food Scan app screenshot](docs/app-screenshot.png)
+Setup page:
+
+![Festival Food Scan setup page](docs/setup-screenshot.png)
+
+Scan session page:
+
+![Festival Food Scan scan session page](docs/scan-session-screenshot.png)
 
 The scanner uses Capgo Camera Preview (`@capgo/camera-preview`) with its native `barcodeScanner` QR feature. It does not use the basic Capacitor Camera API.
+
+Network status uses Capgo Network Diagnostics (`@capgo/capacitor-network-diagnostics`) so the header can show online/offline and sync queue state.
 
 ## Current NocoDB Table
 

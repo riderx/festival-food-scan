@@ -10,6 +10,7 @@
         "@capacitor/core": "^8.4.0",
         "@capacitor/ios": "^8.4.0",
         "@capgo/camera-preview": "^8.4.0",
+        "@capgo/capacitor-network-diagnostics": "^8.0.2",
         "lucide-react": "^1.17.0",
         "react": "^19.2.7",
         "react-dom": "^19.2.7",
@@ -91,6 +92,8 @@
     "@capacitor/ios": ["@capacitor/ios@8.4.0", "", { "peerDependencies": { "@capacitor/core": "^8.4.0" } }, "sha512-tnwstEdbTJ2nHAfoAwnurXgYRscWeLY+IIGdz69o24gN2Crfj9Xc0TWo8L5uFLF1LmpbUywH1IT0U1oHV8c+CA=="],
 
     "@capgo/camera-preview": ["@capgo/camera-preview@8.4.0", "", { "peerDependencies": { "@capacitor/core": ">=8.0.0" } }, "sha512-yKebVLTNLz7soD8bprhe2IqqtfY309w1Je0Jb/zVjCjlsXnSxc0tMqIkXVN1Qh/gmef0/BVruN1uEehscxAAIA=="],
+
+    "@capgo/capacitor-network-diagnostics": ["@capgo/capacitor-network-diagnostics@8.0.2", "", { "peerDependencies": { "@capacitor/core": ">=8.0.0" } }, "sha512-tdwrLznIMSLI+ZfsdUWlDmbGWbV+Msekew4aRb7Oco105IvTV1bfa1LfyLiVeuw2S0ZgmsqBD1n7ZtnNkAk6+w=="],
 
     "@csstools/color-helpers": ["@csstools/color-helpers@6.0.2", "", {}, "sha512-LMGQLS9EuADloEFkcTBR3BwV/CGHV7zyDxVRtVDTwdI2Ca4it0CCVTT9wCkxSgokjE5Ho41hEPgb8OEUwoXr6Q=="],
 

@@ -3,15 +3,18 @@ import {
   CheckCircle2,
   CircleDollarSign,
   Cloud,
+  CloudCheck,
   CloudOff,
+  CloudUpload,
   DatabaseZap,
   Loader2,
   RefreshCw,
   ScanLine,
-  Settings,
   ShieldX,
   TriangleAlert,
   Utensils,
+  Wifi,
+  WifiOff,
 } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import './App.css'
@@ -28,6 +31,7 @@ import {
 } from './domain/nocoDbOffline'
 import type { ScanSessionSnapshot } from './domain/nocoDbOffline'
 import { useCapgoQrScanner } from './hooks/useCapgoQrScanner'
+import { useNetworkDiagnostics } from './hooks/useNetworkDiagnostics'
 
 type ScanEvent = FoodPassResult & {
   id: string
@@ -79,14 +83,15 @@ function App() {
   const [locked, setLocked] = useState(false)
   const [currentScan, setCurrentScan] = useState<CurrentScan | null>(null)
   const [recentScans, setRecentScans] = useState<ScanEvent[]>([])
-  const [manualValue, setManualValue] = useState('')
-  const [showSettings, setShowSettings] = useState(false)
   const [pendingCount, setPendingCount] = useState(() => pendingScanCount())
   const [sessionMessage, setSessionMessage] = useState('')
   const [syncMessage, setSyncMessage] = useState('')
+  const [syncing, setSyncing] = useState(false)
   const lockedRef = useRef(false)
   const releaseTimerRef = useRef<number | undefined>(undefined)
   const syncInFlightRef = useRef(false)
+  const network = useNetworkDiagnostics()
+  const refreshNetwork = network.refresh
 
   const rememberScan = useCallback((scan: ScanEvent) => {
     setCurrentScan(scan)
@@ -118,11 +123,13 @@ function App() {
     }
 
     syncInFlightRef.current = true
+    setSyncing(true)
     if (visible) {
       setSyncMessage('Sync in progress')
     }
 
     try {
+      await refreshNetwork()
       const result = await syncPendingScans()
       setPendingCount(result.pendingCount)
       if (visible || result.syncedCount > 0) {
@@ -130,15 +137,15 @@ function App() {
       }
     } finally {
       syncInFlightRef.current = false
+      setSyncing(false)
     }
-  }, [])
+  }, [refreshNetwork])
 
   const startSession = async () => {
     setSessionState('loading')
     setSessionMessage(`Loading ${selectedMeal.label}`)
     setCurrentScan(null)
     setRecentScans([])
-    setShowSettings(false)
     clearReleaseTimer()
     releaseScanner()
 
@@ -159,7 +166,6 @@ function App() {
     releaseScanner()
     setSessionState('setup')
     setCurrentScan(null)
-    setShowSettings(false)
     void syncQueuedWrites(true)
   }
 
@@ -285,18 +291,15 @@ function App() {
     [recentScans],
   )
 
-  const runManualScan = () => {
-    const value = manualValue.trim()
-    if (!value || sessionState !== 'scanning') {
-      return
-    }
-    setManualValue('')
-    void handleRawScan(value)
-  }
-
   const currentStatus = currentScan?.status ?? 'error'
   const CurrentIcon = currentScan ? statusIcon[currentStatus] : ScanLine
   const blockedCount = stats.already_used + stats.needs_payment + stats.not_found + stats.error
+  const headerTitle = sessionState === 'scanning' ? selectedMeal.label : 'Festival Food Scan'
+  const headerSubtitle = sessionState === 'scanning' ? 'Scan session active' : serviceDay
+  const NetworkIcon = network.online ? Wifi : WifiOff
+  const SyncIcon = syncing ? RefreshCw : pendingCount > 0 ? CloudUpload : CloudCheck
+  const networkLabel = network.online ? network.connectionType : 'offline'
+  const syncLabel = syncing ? 'Syncing' : pendingCount > 0 ? `${pendingCount} queued` : 'Synced'
 
   return (
     <main className={`app-shell ${sessionState === 'scanning' ? 'scan-mode' : 'setup-mode'}`}>
@@ -308,19 +311,21 @@ function App() {
             <Utensils size={18} aria-hidden="true" />
           </span>
           <div>
-            <h1>Festival Food Scan</h1>
-            <p>{sessionState === 'scanning' ? selectedMeal.label : serviceDay}</p>
+            <h1>{headerTitle}</h1>
+            <p>{headerSubtitle}</p>
           </div>
         </div>
 
         <div className="top-actions">
           <span className={`mode-pill ${apiMode === 'NocoDB' ? 'live' : 'demo'}`}>{apiMode}</span>
-          {pendingCount > 0 && <span className="queue-pill">{pendingCount}</span>}
-          {sessionState === 'scanning' && (
-            <button className="icon-button" type="button" aria-label="Settings" title="Settings" onClick={() => setShowSettings((value) => !value)}>
-              <Settings size={18} aria-hidden="true" />
-            </button>
-          )}
+          <span className={`status-pill ${network.online ? 'online' : 'offline'}`} title={network.error ?? network.connectionType}>
+            <NetworkIcon size={15} aria-hidden="true" />
+            {networkLabel}
+          </span>
+          <button className={`status-pill sync ${pendingCount > 0 ? 'queued' : 'synced'}`} type="button" onClick={() => void syncQueuedWrites(true)}>
+            <SyncIcon size={15} aria-hidden="true" />
+            {syncLabel}
+          </button>
         </div>
       </header>
 
@@ -387,7 +392,7 @@ function App() {
               </button>
               <button className="secondary-action compact" type="button" onClick={() => void syncQueuedWrites(true)}>
                 {pendingCount > 0 ? <CloudOff size={17} aria-hidden="true" /> : <Cloud size={17} aria-hidden="true" />}
-                {pendingCount > 0 ? `${pendingCount} queued` : 'Synced'}
+                {syncLabel}
               </button>
             </div>
 
@@ -416,46 +421,6 @@ function App() {
                 <span>Total</span>
               </div>
             </div>
-
-            {showSettings && (
-              <div className="settings-panel">
-                <label htmlFor="manual-qr">Manual QR</label>
-                <div className="manual-row">
-                  <input
-                    id="manual-qr"
-                    value={manualValue}
-                    onChange={(event) => setManualValue(event.target.value)}
-                    onKeyDown={(event) => {
-                      if (event.key === 'Enter') {
-                        runManualScan()
-                      }
-                    }}
-                    placeholder="email@example.com"
-                  />
-                  <button type="button" onClick={runManualScan}>
-                    Scan
-                  </button>
-                </div>
-                <dl>
-                  <div>
-                    <dt>Meal</dt>
-                    <dd>{selectedMeal.label}</dd>
-                  </div>
-                  <div>
-                    <dt>Rows</dt>
-                    <dd>{snapshot?.records.length ?? 0}</dd>
-                  </div>
-                  <div>
-                    <dt>Queue</dt>
-                    <dd>{pendingCount}</dd>
-                  </div>
-                  <div>
-                    <dt>Camera</dt>
-                    <dd>{scanner.active ? 'Active' : scanner.error ? 'Error' : 'Starting'}</dd>
-                  </div>
-                </dl>
-              </div>
-            )}
 
             {recentScans.length > 0 && (
               <div className="recent-list" aria-label="Recent scans">

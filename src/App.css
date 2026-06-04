@@ -45,7 +45,7 @@
 .top-bar {
   min-height: 76px;
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
   gap: 12px;
   padding: calc(env(safe-area-inset-top) + 14px) 18px 10px;
@@ -70,7 +70,8 @@
 
 .brand-lockup {
   gap: 10px;
-  min-width: 0;
+  min-width: 176px;
+  flex: 1 1 220px;
 }
 
 .brand-lockup > div {
@@ -94,9 +95,7 @@ h1 {
   line-height: 1.15;
   letter-spacing: 0;
   color: #ffffff;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
 }
 
 .brand-lockup p {
@@ -107,20 +106,55 @@ h1 {
 
 .top-actions {
   gap: 8px;
+  min-width: 0;
+  flex-wrap: wrap;
+  justify-content: flex-end;
 }
 
 .mode-pill,
-.queue-pill {
+.queue-pill,
+.status-pill {
   height: 34px;
   border-radius: 7px;
   display: inline-flex;
   align-items: center;
+  gap: 6px;
   padding: 0 10px;
   font-size: 13px;
   font-weight: 700;
   color: #e2e8f0;
   background: rgba(15, 23, 42, 0.7);
   border: 1px solid rgba(148, 163, 184, 0.24);
+}
+
+.status-pill {
+  min-width: 0;
+  border-color: rgba(148, 163, 184, 0.24);
+  text-transform: capitalize;
+}
+
+.status-pill.online {
+  color: #bbf7d0;
+  border-color: rgba(34, 197, 94, 0.4);
+}
+
+.status-pill.offline,
+.status-pill.queued {
+  color: #fde68a;
+  border-color: rgba(250, 204, 21, 0.4);
+}
+
+.status-pill.synced {
+  color: #bae6fd;
+  border-color: rgba(56, 189, 248, 0.34);
+}
+
+.status-pill.sync {
+  cursor: pointer;
+}
+
+.status-pill.sync svg {
+  flex: 0 0 auto;
 }
 
 .queue-pill {
