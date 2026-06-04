@@ -1,112 +1,117 @@
 # Festival Food Scan
 
-Tiny Capacitor app for festival staff to scan food QR codes and mark one meal as used for the current service day.
+Tiny Capacitor app for festival staff to scan food QR codes and mark one selected meal as used.
 
 ![Festival Food Scan app screenshot](docs/app-screenshot.png)
 
 The scanner uses Capgo Camera Preview (`@capgo/camera-preview`) with its native `barcodeScanner` QR feature. It does not use the basic Capacitor Camera API.
 
-## Simplest Flow
+## Current NocoDB Table
 
-Use the guest email as the QR code text.
+Base: `Académie Perspectives`
 
-1. In the no-code DB, create one food row per guest per service day.
-2. Store the guest email in lowercase, for example `ada@example.com`.
-3. Generate a QR code where the encoded text is exactly `ada@example.com`.
-4. Email that QR code to the guest.
-5. Staff scans it in the app.
-6. The app sends `token: "ada@example.com"` plus `serviceDay` to the validation webhook.
-7. The webhook finds the no-code DB row by `email + service_day`.
-8. If `used_at` is empty and `paid` is true, the webhook writes `used_at = now`.
-9. The app shows `Meal valid`, `Already used`, `Payment needed`, or `Unknown pass`.
+Table: `Festival juin 2026`
 
-This keeps the QR code readable by every no-code tool: no decoding layer, no signed payload, no custom ID mapping.
+Table id: `mnglg169g5rhka5`
 
-## Expected DB Shape
+View: `festival-juin-2026-festival-juin-2026`
 
-Table name: `meal_passes`
+The app expects the QR code text to be the guest email. If several rows have the same email, the app treats them as several valid passes. For example, a couple sharing one email can scan twice if two paid, entitled rows exist for the selected meal.
 
-| Field | Type | Example | Required | Notes |
-| --- | --- | --- | --- | --- |
-| `email` | text | `ada@example.com` | yes | Store lowercase and trimmed. This is the QR payload. |
-| `service_day` | date/text | `2026-06-03` | yes | Must match the app service day. |
-| `meal_key` | text | `food` | optional | Use `lunch`, `dinner`, etc. if there are several meals in one day. |
-| `person_name` | text | `Ada Lovelace` | optional | Displayed in webhook response. |
-| `paid` | boolean | `true` | yes | Return `needs_payment` when false. |
-| `used_at` | datetime | `2026-06-03T10:30:00.000Z` | yes | Empty means not used yet. |
-| `used_by` | text | `front-gate-phone` | optional | Operator/device label. |
-| `last_scan_raw` | text | `ada@example.com` | optional | Useful audit field. |
-| `scan_count` | number | `1` | optional | Increment on every scan attempt. |
+## Scan Flow
 
-Uniqueness rule: one row per `email + service_day + meal_key`.
+1. Staff chooses the meal once on the setup screen.
+2. Staff starts the scan session.
+3. The app downloads the NocoDB rows and applies any queued local scans.
+4. The camera stays active for repeated scans.
+5. Every QR scan validates locally from the downloaded snapshot.
+6. A successful scan is saved locally immediately and queued for NocoDB.
+7. The app retries queued writes at session start, after each scan, and when staff taps `Sync DB`.
+8. If internet is offline or NocoDB rejects a write, scanning continues and the write stays queued.
+9. To change the meal, staff leaves the scan session and chooses another meal.
 
-If the DB cannot enforce uniqueness, add a formula field:
+## Validation Rules
 
-```text
-email + ":" + service_day + ":" + meal_key
-```
+For the selected meal, the app checks the matching row fields:
 
-Then check manually that the key is unique.
+| Result | Rule |
+| --- | --- |
+| `Oui, suivant` | `Date paiement` exists, the selected meal checkbox is true, and an unused matching row exists. |
+| `Déjà fait` | All paid, entitled rows for that email and meal already have the matching `Scanned ...` timestamp. |
+| `Non payé` | No row for that email is both paid and entitled for the selected meal. |
+| `Inconnu` | No row exists for the scanned email. |
+| `Erreur` | Required scan timestamp columns are missing or the QR is invalid. |
 
-## Connect The No-Code DB
+## Required DB Shape
 
-Do not connect the mobile app directly to a no-code DB admin API. Put a webhook, automation, serverless function, or no-code API endpoint in front of the DB.
+Existing fields verified in the table:
 
-Set the app env:
+| Field | Type | Purpose |
+| --- | --- | --- |
+| `Id` | ID | Row id used for NocoDB PATCH writes. |
+| `Nom` | text | Display name shown after scan. |
+| `Email` | email | QR payload and row lookup key. |
+| `Montant` | currency | Payment amount, informational for the app. |
+| `Mollie ID` | text | Payment id, informational for the app. |
+| `Date paiement` | datetime | Required payment marker. Empty means not paid. |
+| `Arrivé` | checkbox | App sets this to true when a scan is queued/synced. |
+| `Vegetarien` | checkbox | Menu info, informational for the app. |
+
+Meal entitlement checkboxes already exist:
+
+| Meal | Existing checkbox |
+| --- | --- |
+| Friday dinner | `Ven 5 - Dîner` |
+| Saturday breakfast | `Sam 6 - Petit-déj` |
+| Saturday lunch | `Sam 6 - Déjeuner` |
+| Saturday dinner | `Sam 6 - Dîner` |
+| Sunday breakfast | `Dim 7 - Petit-déj` |
+| Sunday lunch | `Dim 7 - Déjeuner` |
+| Sunday dinner | `Dim 7 - Dîner` |
+| Monday breakfast | `Lun 8 - Petit-déj` |
+
+Add these DateTime columns with the exact titles:
+
+| Meal | New DateTime column |
+| --- | --- |
+| Friday dinner | `Scanned Ven 5 - Dîner` |
+| Saturday breakfast | `Scanned Sam 6 - Petit-déj` |
+| Saturday lunch | `Scanned Sam 6 - Déjeuner` |
+| Saturday dinner | `Scanned Sam 6 - Dîner` |
+| Sunday breakfast | `Scanned Dim 7 - Petit-déj` |
+| Sunday lunch | `Scanned Dim 7 - Déjeuner` |
+| Sunday dinner | `Scanned Dim 7 - Dîner` |
+| Monday breakfast | `Scanned Lun 8 - Petit-déj` |
+
+These columns are required because the meal checkbox means “this guest has this meal included”, while `Scanned ...` means “this exact meal was already taken”.
+
+## Configure The App
+
+Create `.env.local`:
 
 ```env
-VITE_VALIDATE_ENDPOINT=
-VITE_VALIDATE_API_TOKEN=
-VITE_VALIDATE_API_KEY=
-VITE_FESTIVAL_TIME_ZONE=
+VITE_NOCODB_BASE_URL=https://sheets.perspectives.ac
+VITE_NOCODB_TABLE_ID=mnglg169g5rhka5
+VITE_NOCODB_TOKEN=
+VITE_FESTIVAL_TIME_ZONE=Europe/Paris
 ```
 
-`VITE_VALIDATE_ENDPOINT` receives every scan. The token/key fields are optional headers if your webhook requires them.
+The NocoDB token must be allowed to read the table and PATCH rows. A read-only token can download rows but cannot sync queued scans back to NocoDB.
 
-The app sends:
+For a one-phone staff app, direct NocoDB access is simple. For a wider distributed app, put a small backend or Worker in front of NocoDB so the database token is not embedded in the mobile bundle.
 
-```json
-{
-  "token": "ada@example.com",
-  "personId": null,
-  "personLabel": null,
-  "qrDay": null,
-  "serviceDay": "2026-06-03",
-  "raw": "ada@example.com",
-  "scannedAt": "2026-06-03T10:30:00.000Z"
-}
+## Add Columns With The API
+
+You can add each scan column from the NocoDB UI as a DateTime field, or use the API:
+
+```bash
+curl -X POST 'https://sheets.perspectives.ac/api/v2/meta/tables/mnglg169g5rhka5/columns' \
+  -H "xc-token: $NOCODB_TOKEN" \
+  -H 'Content-Type: application/json' \
+  -d '{"title":"Scanned Ven 5 - Dîner","uidt":"DateTime"}'
 ```
 
-Webhook logic:
-
-1. Normalize `token` to lowercase.
-2. Find row where `email = token` and `service_day = serviceDay`.
-3. If no row exists, return `{ "status": "not_found" }`.
-4. If `paid` is false, return `{ "status": "needs_payment" }`.
-5. If `used_at` already has a value, return `{ "status": "already_used", "usedAt": used_at }`.
-6. Otherwise update the row:
-   - `used_at = scannedAt`
-   - `last_scan_raw = raw`
-   - `scan_count = scan_count + 1`
-7. Return `{ "status": "ok", "personName": person_name, "usedAt": scannedAt }`.
-
-Accepted response shapes:
-
-```json
-{ "status": "ok", "personName": "Ada Lovelace", "usedAt": "2026-06-03T10:30:00.000Z" }
-```
-
-```json
-{ "status": "already_used", "message": "Lunch already scanned" }
-```
-
-```json
-{ "needsPayment": true }
-```
-
-Status values accepted: `ok`, `valid`, `allowed`, `already_used`, `used`, `duplicate`, `needs_payment`, `payment_required`, `unpaid`, `not_found`, `unknown`, `invalid`.
-
-Without `VITE_VALIDATE_ENDPOINT`, the app runs in demo mode and stores daily usage in local storage.
+Repeat with each `Scanned ...` title listed above.
 
 ## Make QR Codes From Rows
 
@@ -116,42 +121,54 @@ Recommended QR payload:
 ada@example.com
 ```
 
-No-code DB formula fields:
+The QR code should contain only the normalized email text. No JSON, no signed token, no custom id mapping.
 
-| Field | Formula |
-| --- | --- |
-| `email_normalized` | lower/trim the `email` field |
-| `qr_payload` | `email_normalized` |
-| `qr_image_url` | QR image generated from `qr_payload` |
+In NocoDB:
 
-Generic QR image URL pattern:
+1. Use the `Email` field as the QR payload.
+2. Add a QR Code field if your NocoDB setup has that field type, and point it at `Email`.
+3. If you prefer an image URL, create a formula/text field using this shape:
 
 ```text
-https://quickchart.io/qr?size=300&text=<url-encoded qr_payload>
+https://quickchart.io/qr?size=300&text=<url-encoded Email>
 ```
 
-Example formula shape:
+Example generated URL:
 
 ```text
-"https://quickchart.io/qr?size=300&text=" + ENCODE_URL_COMPONENT(qr_payload)
+https://quickchart.io/qr?size=300&text=ada%40example.com
 ```
-
-If your no-code DB has a built-in QR field, use that instead and point it at `qr_payload`.
 
 End-to-end send flow:
 
-1. Import or create guest rows.
-2. Fill `email`, `service_day`, `person_name`, and `paid`.
-3. Let the DB formula generate `qr_payload = email_normalized`.
-4. Let the QR field or `qr_image_url` generate the QR image.
-5. Email the QR image to each guest.
-6. At the festival, build the app with the webhook endpoint configured.
-7. Staff scans the guest QR code.
-8. The webhook marks the matching row as used for that day.
+1. Import or create guest rows in `Festival juin 2026`.
+2. Fill `Nom`, `Email`, `Date paiement`, and the meal checkboxes.
+3. Generate one QR image from the `Email` value.
+4. Email the QR image to the guest.
+5. At the festival, staff picks the meal and starts a scan session.
+6. Staff scans the guest QR code.
+7. The app consumes one eligible row for that email and queues the `Scanned ...` timestamp write.
+
+## Offline Behavior
+
+The app stores two things locally:
+
+| Local item | Purpose |
+| --- | --- |
+| NocoDB snapshot | Lets scan validation continue when internet drops after session start. |
+| Pending writes queue | Keeps successful scans that still need to be patched to NocoDB. |
+
+Queued writes are retried:
+
+1. when the app opens,
+2. when a scan session starts,
+3. after each scan,
+4. when staff taps `Sync DB`,
+5. when staff leaves the session.
 
 ## Other QR Payloads
 
-Plain email is best for this app. These also work if needed:
+Plain email is best for this app. These also work in demo/webhook mode:
 
 ```text
 PASS-123
@@ -194,5 +211,3 @@ npx cap sync
 npx cap open ios
 npx cap open android
 ```
-
-For production builds, configure the no-code DB endpoint before building so the generated web assets include it.

@@ -1,3 +1,5 @@
+import type { MealSession } from './mealSessions'
+
 export type FoodPassStatus = 'ok' | 'already_used' | 'needs_payment' | 'not_found' | 'error'
 
 export type QrPayload = {
@@ -17,6 +19,8 @@ export type FoodPassResult = {
   token: string
   personId?: string
   personLabel?: string
+  mealSessionKey?: string
+  mealSessionLabel?: string
   usedAt?: string
 }
 
@@ -59,10 +63,14 @@ export function parseQrPayload(rawValue: string): QrPayload {
   }
 }
 
-export async function validateFoodPass(payload: QrPayload, serviceDay: string): Promise<FoodPassResult> {
+export async function validateFoodPass(
+  payload: QrPayload,
+  serviceDay: string,
+  mealSession: MealSession,
+): Promise<FoodPassResult> {
   const endpoint = import.meta.env.VITE_VALIDATE_ENDPOINT
   if (!endpoint) {
-    return validateDemoPass(payload, serviceDay)
+    return validateDemoPass(payload, serviceDay, mealSession)
   }
 
   const response = await fetch(endpoint, {
@@ -74,6 +82,8 @@ export async function validateFoodPass(payload: QrPayload, serviceDay: string): 
       personLabel: payload.personLabel,
       qrDay: payload.day,
       serviceDay,
+      mealSessionKey: mealSession.key,
+      mealSessionLabel: mealSession.label,
       raw: payload.raw,
       scannedAt: new Date().toISOString(),
     }),
@@ -90,13 +100,20 @@ export async function validateFoodPass(payload: QrPayload, serviceDay: string): 
       token: payload.token,
       personId: payload.personId,
       personLabel: payload.personLabel,
+      mealSessionKey: mealSession.key,
+      mealSessionLabel: mealSession.label,
     }
   }
 
-  return normalizeValidationResponse(record, payload, serviceDay)
+  return normalizeValidationResponse(record, payload, serviceDay, mealSession)
 }
 
-export function normalizeValidationResponse(body: unknown, payload: QrPayload, serviceDay: string): FoodPassResult {
+export function normalizeValidationResponse(
+  body: unknown,
+  payload: QrPayload,
+  serviceDay: string,
+  mealSession?: MealSession,
+): FoodPassResult {
   const record = isRecord(body) ? body : {}
   const rawStatus = readString(record, 'status') ?? readString(record, 'state') ?? readString(record, 'result')
   const status = resolveStatus(rawStatus, record)
@@ -116,27 +133,33 @@ export function normalizeValidationResponse(body: unknown, payload: QrPayload, s
     token: readString(record, 'token') ?? payload.token,
     personId,
     personLabel,
+    mealSessionKey: readString(record, 'mealSessionKey') ?? mealSession?.key,
+    mealSessionLabel: readString(record, 'mealSessionLabel') ?? mealSession?.label,
     usedAt: readString(record, 'usedAt') ?? readString(record, 'used_at'),
   }
 }
 
-export function validateDemoPass(payload: QrPayload, serviceDay: string): FoodPassResult {
+export function validateDemoPass(
+  payload: QrPayload,
+  serviceDay: string,
+  mealSession?: MealSession,
+): FoodPassResult {
   const token = payload.token.trim()
   const personLabel = payload.personLabel ?? payload.personId ?? token
 
   if (token.toLowerCase().includes('notfound') || token.toLowerCase().includes('invalid')) {
-    return result('not_found', payload, serviceDay, 'No matching meal row', personLabel)
+    return result('not_found', payload, serviceDay, 'No matching meal row', personLabel, mealSession)
   }
 
   if (payload.paid === false || token.toLowerCase().startsWith('pay:')) {
-    return result('needs_payment', payload, serviceDay, 'Meal payment missing', personLabel)
+    return result('needs_payment', payload, serviceDay, 'Meal payment missing', personLabel, mealSession)
   }
 
-  const key = `${demoStoragePrefix}:${serviceDay}`
+  const key = `${demoStoragePrefix}:${serviceDay}:${mealSession?.key ?? 'default'}`
   const used = readUsedTokens(key)
   if (used[token]) {
     return {
-      ...result('already_used', payload, serviceDay, `Used at ${formatTime(used[token])}`, personLabel),
+      ...result('already_used', payload, serviceDay, `Used at ${formatTime(used[token])}`, personLabel, mealSession),
       usedAt: used[token],
     }
   }
@@ -146,7 +169,7 @@ export function validateDemoPass(payload: QrPayload, serviceDay: string): FoodPa
   writeUsedTokens(key, used)
 
   return {
-    ...result('ok', payload, serviceDay, 'Meal marked as used for today', personLabel),
+    ...result('ok', payload, serviceDay, 'Meal marked as used', personLabel, mealSession),
     usedAt,
   }
 }
@@ -303,6 +326,7 @@ function result(
   serviceDay: string,
   message: string,
   personLabel?: string,
+  mealSession?: MealSession,
 ): FoodPassResult {
   return {
     status,
@@ -312,6 +336,8 @@ function result(
     token: payload.token,
     personId: payload.personId,
     personLabel,
+    mealSessionKey: mealSession?.key,
+    mealSessionLabel: mealSession?.label,
   }
 }
 
