@@ -5,6 +5,11 @@ const config: CapacitorConfig = {
   appName: 'Festival Food Scan',
   webDir: 'dist',
   plugins: {
+    CapacitorUpdater: {
+      autoUpdate: true,
+      defaultChannel: 'production',
+      allowPreview: true,
+    },
     CameraPreview: {
       disableAudio: true,
     },

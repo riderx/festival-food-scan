@@ -1,19 +1,17 @@
-import {
-  ArrowLeft,
-  CheckCircle2,
-  CircleDollarSign,
-  CloudCheck,
-  CloudUpload,
-  DatabaseZap,
-  Loader2,
-  RefreshCw,
-  ScanLine,
-  ShieldX,
-  TriangleAlert,
-  Utensils,
-  Wifi,
-  WifiOff,
-} from 'lucide-react'
+import ArrowLeft from 'lucide-react/dist/esm/icons/arrow-left.mjs'
+import CheckCircle2 from 'lucide-react/dist/esm/icons/check-circle-2.mjs'
+import CircleDollarSign from 'lucide-react/dist/esm/icons/circle-dollar-sign.mjs'
+import CloudCheck from 'lucide-react/dist/esm/icons/cloud-check.mjs'
+import CloudUpload from 'lucide-react/dist/esm/icons/cloud-upload.mjs'
+import DatabaseZap from 'lucide-react/dist/esm/icons/database-zap.mjs'
+import Loader2 from 'lucide-react/dist/esm/icons/loader-2.mjs'
+import RefreshCw from 'lucide-react/dist/esm/icons/refresh-cw.mjs'
+import ScanLine from 'lucide-react/dist/esm/icons/scan-line.mjs'
+import ShieldX from 'lucide-react/dist/esm/icons/shield-x.mjs'
+import TriangleAlert from 'lucide-react/dist/esm/icons/triangle-alert.mjs'
+import Utensils from 'lucide-react/dist/esm/icons/utensils.mjs'
+import Wifi from 'lucide-react/dist/esm/icons/wifi.mjs'
+import WifiOff from 'lucide-react/dist/esm/icons/wifi-off.mjs'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import './App.css'
 import { parseQrPayload, serviceDayFor, validateFoodPass } from './domain/mealPass'

@@ -1,11 +1,11 @@
 {
   "name": "festival-food-scan",
   "private": true,
-  "version": "0.0.0",
+  "version": "1.0.1",
   "type": "module",
   "scripts": {
     "dev": "node node_modules/vite/bin/vite.js",
-    "build": "bun --bun node_modules/typescript/bin/tsc -b && node node_modules/vite/bin/vite.js build",
+    "build": "node node_modules/typescript/bin/tsc -b && node node_modules/vite/bin/vite.js build",
     "lint": "eslint .",
     "preview": "node node_modules/vite/bin/vite.js preview",
     "test": "vitest run",
@@ -17,6 +17,7 @@
     "@capacitor/core": "^8.4.0",
     "@capacitor/ios": "^8.4.0",
     "@capgo/camera-preview": "^8.4.0",
+    "@capgo/capacitor-updater": "^8.47.7",
     "@capgo/capacitor-network-diagnostics": "^8.0.2",
     "lucide-react": "^1.17.0",
     "react": "^19.2.7",

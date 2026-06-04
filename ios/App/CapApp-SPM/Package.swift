@@ -13,6 +13,7 @@ let package = Package(
     dependencies: [
         .package(url: "https://github.com/ionic-team/capacitor-swift-pm.git", exact: "8.4.0"),
         .package(name: "CapgoCameraPreview", path: "../../../node_modules/@capgo/camera-preview"),
+        .package(name: "CapgoCapacitorUpdater", path: "../../../node_modules/@capgo/capacitor-updater"),
         .package(name: "CapgoCapacitorNetworkDiagnostics", path: "../../../node_modules/@capgo/capacitor-network-diagnostics")
     ],
     targets: [
@@ -22,6 +23,7 @@ let package = Package(
                 .product(name: "Capacitor", package: "capacitor-swift-pm"),
                 .product(name: "Cordova", package: "capacitor-swift-pm"),
                 .product(name: "CapgoCameraPreview", package: "CapgoCameraPreview"),
+                .product(name: "CapgoCapacitorUpdater", package: "CapgoCapacitorUpdater"),
                 .product(name: "CapgoCapacitorNetworkDiagnostics", package: "CapgoCapacitorNetworkDiagnostics")
             ]
         )

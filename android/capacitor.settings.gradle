@@ -5,5 +5,8 @@ project(':capacitor-android').projectDir = new File('../node_modules/@capacitor/
 include ':capgo-camera-preview'
 project(':capgo-camera-preview').projectDir = new File('../node_modules/@capgo/camera-preview/android')
 
+include ':capgo-capacitor-updater'
+project(':capgo-capacitor-updater').projectDir = new File('../node_modules/@capgo/capacitor-updater/android')
+
 include ':capgo-capacitor-network-diagnostics'
 project(':capgo-capacitor-network-diagnostics').projectDir = new File('../node_modules/@capgo/capacitor-network-diagnostics/android')
