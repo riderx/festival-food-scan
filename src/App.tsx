@@ -264,7 +264,11 @@ function App() {
   })
 
   useEffect(() => {
-    void syncQueuedWrites(false)
+    const syncTimer = window.setTimeout(() => {
+      void syncQueuedWrites(false)
+    }, 0)
+
+    return () => window.clearTimeout(syncTimer)
   }, [syncQueuedWrites])
 
   useEffect(() => clearReleaseTimer, [clearReleaseTimer])
