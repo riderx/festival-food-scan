@@ -52,7 +52,11 @@
   align-items: flex-start;
   justify-content: space-between;
   gap: 12px;
-  padding: calc(env(safe-area-inset-top) + 14px) 18px 10px;
+  padding:
+    max(calc(env(safe-area-inset-top, 0px) + 14px), 54px)
+    calc(env(safe-area-inset-right, 0px) + 18px)
+    10px
+    calc(env(safe-area-inset-left, 0px) + 18px);
   background: rgba(9, 14, 20, 0.74);
   backdrop-filter: blur(8px);
 }
@@ -333,7 +337,11 @@ button {
   min-height: calc(100svh - 302px);
   display: grid;
   place-items: center;
-  padding: 28px;
+  padding:
+    28px
+    calc(env(safe-area-inset-right, 0px) + 28px)
+    28px
+    calc(env(safe-area-inset-left, 0px) + 28px);
 }
 
 .scan-frame {
@@ -394,7 +402,11 @@ button {
 .status-dock {
   width: min(100%, 760px);
   margin: 0 auto;
-  padding: 0 14px calc(env(safe-area-inset-bottom) + 14px);
+  padding:
+    0
+    calc(env(safe-area-inset-right, 0px) + 14px)
+    calc(env(safe-area-inset-bottom, 0px) + 14px)
+    calc(env(safe-area-inset-left, 0px) + 14px);
   box-sizing: border-box;
 }
 
