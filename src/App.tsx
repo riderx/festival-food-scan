@@ -27,6 +27,7 @@ import {
 import type { ScanSessionSnapshot } from './domain/nocoDbOffline'
 import { useCapgoQrScanner } from './hooks/useCapgoQrScanner'
 import { useNetworkDiagnostics } from './hooks/useNetworkDiagnostics'
+import type { NetworkDiagnosticsState } from './hooks/useNetworkDiagnostics'
 
 type ScanEvent = FoodPassResult & {
   id: string
@@ -68,7 +69,9 @@ const statusLabel = {
 
 const apiMode = hasNocoDbConfig() ? 'NocoDB' : 'Demo'
 const autoReleaseMs = 1450
-const preScanRefreshTimeoutMs = 1500
+const preScanRefreshTimeoutMs = 1200
+const startScanRemoteTimeoutMs = 1800
+const syncWriteTimeoutMs = 1500
 
 function App() {
   const serviceDay = useMemo(() => serviceDayFor(new Date()), [])
@@ -127,11 +130,35 @@ function App() {
     }
 
     try {
-      await refreshNetwork()
-      const result = await syncPendingScans()
+      const latestNetwork = await refreshNetwork()
+      const currentPendingCount = pendingScanCount()
+      setPendingCount(currentPendingCount)
+
+      if (currentPendingCount === 0) {
+        if (visible) {
+          setSyncMessage('No pending writes')
+        }
+        return
+      }
+
+      if (!latestNetwork.remoteUsable) {
+        const message = `Local queue kept: ${latestNetwork.reason}`
+        setFreshnessError(message)
+        if (visible) {
+          setSyncMessage(message)
+        }
+        return
+      }
+
+      const result = await syncPendingScans({ timeoutMs: syncWriteTimeoutMs })
       setPendingCount(result.pendingCount)
       if (visible || result.syncedCount > 0 || result.failedCount > 0) {
         setSyncMessage(result.message)
+      }
+      if (result.failedCount > 0) {
+        setFreshnessError('Sync failed, local queue kept')
+      } else if (result.pendingCount === 0) {
+        setFreshnessError('')
       }
     } finally {
       syncInFlightRef.current = false
@@ -151,7 +178,15 @@ function App() {
     setFreshnessError('')
 
     try {
-      const result = await refreshScanSessionSnapshot(serviceDay, controller.signal)
+      const latestNetwork = await refreshNetwork()
+      if (!latestNetwork.remoteUsable) {
+        const message = `${latestNetwork.reason}, local cache used`
+        setFreshnessError(message)
+        setSyncMessage(message)
+        return snapshot
+      }
+
+      const result = await refreshScanSessionSnapshot(serviceDay, controller.signal, preScanRefreshTimeoutMs)
       setSnapshot(result.snapshot)
       setPendingCount(result.pendingCount)
       setSyncMessage(result.message)
@@ -165,7 +200,7 @@ function App() {
       window.clearTimeout(timeoutId)
       setRefreshingDb(false)
     }
-  }, [serviceDay, snapshot])
+  }, [refreshNetwork, serviceDay, snapshot])
 
   const startSession = async () => {
     setSessionState('loading')
@@ -177,10 +212,18 @@ function App() {
     releaseScanner()
 
     try {
-      const result = await startScanSession(selectedMeal, serviceDay)
+      const latestNetwork = await refreshNetwork()
+      const skipRemote = hasNocoDbConfig() && !latestNetwork.remoteUsable
+      const result = await startScanSession(selectedMeal, serviceDay, {
+        skipRemote,
+        timeoutMs: startScanRemoteTimeoutMs,
+      })
       setSnapshot(result.snapshot)
       setPendingCount(result.pendingCount)
-      setSessionMessage(result.message)
+      const message = skipRemote ? `${result.message}. ${latestNetwork.reason}.` : result.message
+      setSessionMessage(message)
+      setSyncMessage(message)
+      setFreshnessError(result.source === 'cache' ? cacheModeMessage(latestNetwork) : '')
       setSessionState('scanning')
     } catch (error) {
       setSessionMessage(error instanceof Error ? error.message : 'Could not start scan session')
@@ -312,14 +355,14 @@ function App() {
   }, [syncQueuedWrites])
 
   useEffect(() => {
-    if (network.online && pendingCount > 0) {
+    if (network.remoteUsable && pendingCount > 0) {
       const retryTimer = window.setTimeout(() => {
         void syncQueuedWrites(false)
       }, 0)
 
       return () => window.clearTimeout(retryTimer)
     }
-  }, [network.online, pendingCount, syncQueuedWrites])
+  }, [network.remoteUsable, pendingCount, syncQueuedWrites])
 
   useEffect(() => clearReleaseTimer, [clearReleaseTimer])
 
@@ -490,3 +533,7 @@ function App() {
 }
 
 export default App
+
+function cacheModeMessage(network: NetworkDiagnosticsState): string {
+  return network.remoteUsable ? 'Local cache used' : `${network.reason}, local cache used`
+}

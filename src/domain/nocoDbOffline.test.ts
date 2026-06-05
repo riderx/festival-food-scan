@@ -3,6 +3,8 @@ import { mealSessions } from './mealSessions'
 import {
   refreshScanSessionSnapshot,
   resetOfflineStoreForTests,
+  startScanSession,
+  syncPendingScans,
   validateOfflineScan,
 } from './nocoDbOffline'
 import type { ScanSessionSnapshot, StoredMealRecord } from './nocoDbOffline'
@@ -100,6 +102,46 @@ describe('offline NocoDB scan validation', () => {
 
     expect(refresh.snapshot.records[0].scannedAt[mealSession.key]).toBe(localScan.result.usedAt)
     expect(refresh.pendingCount).toBe(1)
+  })
+
+  it('starts from cached rows without remote work when the network is skipped', async () => {
+    validateOfflineScan(
+      snapshotWithRecords([record({ id: 1 })]),
+      { raw: 'ada@example.com', token: 'ada@example.com' },
+      mealSession,
+      '2026-06-05',
+    )
+    const fetchMock = vi.fn()
+    vi.stubGlobal('fetch', fetchMock)
+
+    const result = await startScanSession(mealSession, '2026-06-05', { skipRemote: true })
+
+    expect(result.source).toBe('cache')
+    expect(result.snapshot.records).toHaveLength(1)
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('stops sync after the first network failure and keeps the full queue', async () => {
+    const first = validateOfflineScan(
+      snapshotWithRecords([record({ id: 1 }), record({ id: 2 })]),
+      { raw: 'ada@example.com', token: 'ada@example.com' },
+      mealSession,
+      '2026-06-05',
+    )
+    validateOfflineScan(first.snapshot, { raw: 'ada@example.com', token: 'ada@example.com' }, mealSession, '2026-06-05')
+    const fetchMock = vi.fn(async () => {
+      throw new Error('offline')
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    const result = await syncPendingScans({ timeoutMs: 10 })
+
+    expect(result).toMatchObject({
+      pendingCount: 2,
+      syncedCount: 0,
+      failedCount: 2,
+    })
+    expect(fetchMock).toHaveBeenCalledTimes(1)
   })
 })
 

@@ -40,6 +40,11 @@ export type SessionStartResult = {
   pendingCount: number
 }
 
+export type StartScanSessionOptions = {
+  skipRemote?: boolean
+  timeoutMs?: number
+}
+
 export type SnapshotRefreshResult = {
   snapshot: ScanSessionSnapshot
   message: string
@@ -59,8 +64,14 @@ export type SyncResult = {
   message: string
 }
 
+export type SyncPendingScansOptions = {
+  timeoutMs?: number
+}
+
 const snapshotStorageKey = 'festival-food-scan:nocodb:snapshot'
 const pendingStorageKey = 'festival-food-scan:nocodb:pending'
+const nocoDbReadTimeoutMs = 2200
+const nocoDbWriteTimeoutMs = 1800
 const memoryStorage = new Map<string, string>()
 
 export function hasNocoDbConfig(): boolean {
@@ -74,6 +85,7 @@ export function hasNocoDbConfig(): boolean {
 export async function startScanSession(
   mealSession: MealSession,
   serviceDay: string,
+  options: StartScanSessionOptions = {},
 ): Promise<SessionStartResult> {
   if (!hasNocoDbConfig()) {
     const snapshot = applyPendingScans({
@@ -92,14 +104,18 @@ export async function startScanSession(
     }
   }
 
-  const syncResult = await syncPendingScans()
+  if (options.skipRemote) {
+    return startCachedSession(mealSession, 'Offline mode')
+  }
+
+  const syncResult = await syncPendingScans({ timeoutMs: options.timeoutMs })
 
   try {
     const snapshot = applyPendingScans({
       serviceDay,
       downloadedAt: new Date().toISOString(),
       source: 'remote',
-      records: await fetchAllRecords(),
+      records: await fetchAllRecords(undefined, options.timeoutMs ?? nocoDbReadTimeoutMs),
     })
     saveSnapshot(snapshot)
 
@@ -135,6 +151,7 @@ export async function startScanSession(
 export async function refreshScanSessionSnapshot(
   serviceDay: string,
   signal?: AbortSignal,
+  timeoutMs = nocoDbReadTimeoutMs,
 ): Promise<SnapshotRefreshResult> {
   if (!hasNocoDbConfig()) {
     const cached = loadSnapshot()
@@ -159,7 +176,7 @@ export async function refreshScanSessionSnapshot(
     serviceDay,
     downloadedAt: new Date().toISOString(),
     source: 'remote',
-    records: await fetchAllRecords(signal),
+    records: await fetchAllRecords(signal, timeoutMs),
   })
   saveSnapshot(snapshot)
 
@@ -286,7 +303,7 @@ export function validateOfflineScan(
   }
 }
 
-export async function syncPendingScans(): Promise<SyncResult> {
+export async function syncPendingScans(options: SyncPendingScansOptions = {}): Promise<SyncResult> {
   const pending = loadPendingScans()
   if (pending.length === 0) {
     return {
@@ -309,12 +326,14 @@ export async function syncPendingScans(): Promise<SyncResult> {
   const remaining: PendingScanWrite[] = []
   let syncedCount = 0
 
-  for (const scan of pending) {
+  for (const [index, scan] of pending.entries()) {
     try {
-      await patchNocoDbScan(scan)
+      await patchNocoDbScan(scan, options.timeoutMs ?? nocoDbWriteTimeoutMs)
       syncedCount += 1
     } catch {
       remaining.push(scan)
+      remaining.push(...pending.slice(index + 1))
+      break
     }
   }
 
@@ -345,7 +364,27 @@ export function resetOfflineStoreForTests() {
   memoryStorage.clear()
 }
 
-async function fetchAllRecords(signal?: AbortSignal): Promise<StoredMealRecord[]> {
+function startCachedSession(mealSession: MealSession, prefix: string): SessionStartResult {
+  const cached = loadSnapshot()
+  if (!cached) {
+    throw new Error('Cannot download NocoDB rows and no cache exists')
+  }
+
+  const snapshot = applyPendingScans({
+    ...cached,
+    source: 'cache',
+  })
+  saveSnapshot(snapshot)
+
+  return {
+    snapshot,
+    source: 'cache',
+    message: `${prefix} using ${snapshot.records.length} cached rows for ${mealSession.label}`,
+    pendingCount: loadPendingScans().length,
+  }
+}
+
+async function fetchAllRecords(signal?: AbortSignal, timeoutMs = nocoDbReadTimeoutMs): Promise<StoredMealRecord[]> {
   const rows: FlexibleRecord[] = []
   let page = 1
   let isLastPage = false
@@ -355,18 +394,23 @@ async function fetchAllRecords(signal?: AbortSignal): Promise<StoredMealRecord[]
     url.searchParams.set('page', String(page))
     url.searchParams.set('pageSize', '1000')
 
-    const response = await fetch(url, {
-      headers: nocoDbHeaders(),
-      signal,
-    })
-    const body = await safeJson(response)
-    if (!response.ok) {
-      throw new Error(nocoDbErrorMessage(body, `NocoDB download failed with HTTP ${response.status}`))
-    }
+    const timeout = timeoutSignal(timeoutMs, signal)
+    try {
+      const response = await fetch(url, {
+        headers: nocoDbHeaders(),
+        signal: timeout.signal,
+      })
+      const body = await safeJson(response)
+      if (!response.ok) {
+        throw new Error(nocoDbErrorMessage(body, `NocoDB download failed with HTTP ${response.status}`))
+      }
 
-    rows.push(...nocoDbRecords(body))
-    isLastPage = nocoDbIsLastPage(body)
-    page += 1
+      rows.push(...nocoDbRecords(body))
+      isLastPage = nocoDbIsLastPage(body)
+      page += 1
+    } finally {
+      timeout.cleanup()
+    }
   }
 
   return rows.map(nocoDbRowToStoredRecord).filter((record) => record.email)
@@ -396,30 +440,36 @@ function nocoDbRowToStoredRecord(row: FlexibleRecord): StoredMealRecord {
   }
 }
 
-async function patchNocoDbScan(scan: PendingScanWrite): Promise<void> {
+async function patchNocoDbScan(scan: PendingScanWrite, timeoutMs = nocoDbWriteTimeoutMs): Promise<void> {
   const mealSession = mealSessions.find((session) => session.key === scan.mealSessionKey)
   if (!mealSession) {
     throw new Error(`Unknown meal session ${scan.mealSessionKey}`)
   }
 
-  const response = await fetch(nocoDbUrl(`/api/v2/tables/${import.meta.env.VITE_NOCODB_TABLE_ID}/records`), {
-    method: 'PATCH',
-    headers: {
-      ...nocoDbHeaders(),
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify([
-      {
-        Id: scan.recordId,
-        [mealSession.scannedAtField]: scan.scannedAt,
-        Arrivé: true,
+  const timeout = timeoutSignal(timeoutMs)
+  try {
+    const response = await fetch(nocoDbUrl(`/api/v2/tables/${import.meta.env.VITE_NOCODB_TABLE_ID}/records`), {
+      method: 'PATCH',
+      headers: {
+        ...nocoDbHeaders(),
+        'Content-Type': 'application/json',
       },
-    ]),
-  })
+      body: JSON.stringify([
+        {
+          Id: scan.recordId,
+          [mealSession.scannedAtField]: scan.scannedAt,
+          Arrivé: true,
+        },
+      ]),
+      signal: timeout.signal,
+    })
 
-  if (!response.ok) {
-    const body = await safeJson(response)
-    throw new Error(nocoDbErrorMessage(body, `NocoDB update failed with HTTP ${response.status}`))
+    if (!response.ok) {
+      const body = await safeJson(response)
+      throw new Error(nocoDbErrorMessage(body, `NocoDB update failed with HTTP ${response.status}`))
+    }
+  } finally {
+    timeout.cleanup()
   }
 }
 
@@ -518,6 +568,26 @@ function nocoDbUrl(path: string): URL {
 function nocoDbHeaders(): HeadersInit {
   return {
     'xc-token': import.meta.env.VITE_NOCODB_TOKEN,
+  }
+}
+
+function timeoutSignal(timeoutMs: number, parentSignal?: AbortSignal): { signal: AbortSignal; cleanup: () => void } {
+  const controller = new AbortController()
+  const abortFromParent = () => controller.abort(parentSignal?.reason)
+  const timeoutId = window.setTimeout(() => controller.abort(new Error('NocoDB request timeout')), timeoutMs)
+
+  if (parentSignal?.aborted) {
+    abortFromParent()
+  } else {
+    parentSignal?.addEventListener('abort', abortFromParent, { once: true })
+  }
+
+  return {
+    signal: controller.signal,
+    cleanup: () => {
+      window.clearTimeout(timeoutId)
+      parentSignal?.removeEventListener('abort', abortFromParent)
+    },
   }
 }
 
