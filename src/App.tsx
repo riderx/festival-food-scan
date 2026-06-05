@@ -274,7 +274,11 @@ function App() {
 
   useEffect(() => {
     if (network.online && pendingCount > 0) {
-      void syncQueuedWrites(false)
+      const retryTimer = window.setTimeout(() => {
+        void syncQueuedWrites(false)
+      }, 0)
+
+      return () => window.clearTimeout(retryTimer)
     }
   }, [network.online, pendingCount, syncQueuedWrites])
 
