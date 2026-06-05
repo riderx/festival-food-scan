@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { mealSessions } from './mealSessions'
 import {
+  refreshScanSessionSnapshot,
   resetOfflineStoreForTests,
   validateOfflineScan,
 } from './nocoDbOffline'
@@ -18,6 +19,7 @@ describe('offline NocoDB scan validation', () => {
 
   afterEach(() => {
     vi.unstubAllEnvs()
+    vi.unstubAllGlobals()
     resetOfflineStoreForTests()
   })
 
@@ -62,7 +64,66 @@ describe('offline NocoDB scan validation', () => {
     expect(result.result.status).toBe('needs_payment')
     expect(result.pendingCount).toBe(0)
   })
+
+  it('uses fresh NocoDB rows to catch a scan from another phone', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => jsonResponse([nocoRow({ [mealSession.scannedAtField]: '2026-06-05 12:00:00+00:00' })])),
+    )
+
+    const refresh = await refreshScanSessionSnapshot('2026-06-05')
+    const result = validateOfflineScan(
+      refresh.snapshot,
+      { raw: 'ada@example.com', token: 'ada@example.com' },
+      mealSession,
+      '2026-06-05',
+    )
+
+    expect(result.result).toMatchObject({
+      status: 'already_used',
+      usedAt: '2026-06-05 12:00:00+00:00',
+    })
+  })
+
+  it('keeps queued local scans applied after a remote refresh', async () => {
+    const localScan = validateOfflineScan(
+      snapshotWithRecords([record({ id: 1 })]),
+      { raw: 'ada@example.com', token: 'ada@example.com' },
+      mealSession,
+      '2026-06-05',
+    )
+    expect(localScan.result.status).toBe('ok')
+
+    vi.stubGlobal('fetch', vi.fn(async () => jsonResponse([nocoRow()])))
+
+    const refresh = await refreshScanSessionSnapshot('2026-06-05')
+
+    expect(refresh.snapshot.records[0].scannedAt[mealSession.key]).toBe(localScan.result.usedAt)
+    expect(refresh.pendingCount).toBe(1)
+  })
 })
+
+function jsonResponse(rows: Record<string, unknown>[]): Response {
+  return new Response(
+    JSON.stringify({
+      list: rows,
+      pageInfo: { isLastPage: true },
+    }),
+    { status: 200 },
+  )
+}
+
+function nocoRow(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    Id: 1,
+    Nom: 'Ada',
+    Email: 'ada@example.com',
+    'Date paiement': '2026-06-01 10:00:00+00:00',
+    [mealSession.entitlementField]: true,
+    [mealSession.scannedAtField]: undefined,
+    ...overrides,
+  }
+}
 
 function snapshotWithRecords(records: StoredMealRecord[]): ScanSessionSnapshot {
   return {

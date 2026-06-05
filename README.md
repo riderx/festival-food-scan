@@ -32,11 +32,12 @@ The app expects the QR code text to be the guest email. If several rows have the
 2. Staff starts the scan session.
 3. The app downloads the NocoDB rows and applies any queued local scans.
 4. The camera stays active for repeated scans.
-5. Every QR scan validates locally from the downloaded snapshot.
-6. A successful scan is saved locally immediately and queued for NocoDB.
-7. The app retries queued writes at session start, after each scan, and when staff taps `Sync DB`.
-8. If internet is offline or NocoDB rejects a write, scanning continues and the write stays queued.
-9. To change the meal, staff leaves the scan session and chooses another meal.
+5. Every QR scan tries to refresh NocoDB first so another phone's recent scans are visible.
+6. If that refresh fails or is too slow, validation continues from the local cached rows and the sync pill shows `Local DB`.
+7. A successful scan is saved locally immediately and queued for NocoDB.
+8. The app retries queued writes at session start, after each scan, when the network is usable, and when staff taps `Sync DB`.
+9. If internet is offline or NocoDB rejects a write, scanning continues and the write stays queued.
+10. To change the meal, staff leaves the scan session and chooses another meal.
 
 ## Validation Rules
 

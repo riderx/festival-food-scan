@@ -40,6 +40,12 @@ export type SessionStartResult = {
   pendingCount: number
 }
 
+export type SnapshotRefreshResult = {
+  snapshot: ScanSessionSnapshot
+  message: string
+  pendingCount: number
+}
+
 export type OfflineScanResult = {
   result: FoodPassResult
   snapshot: ScanSessionSnapshot
@@ -123,6 +129,44 @@ export async function startScanSession(
       message: `Offline mode using ${snapshot.records.length} cached rows`,
       pendingCount: loadPendingScans().length,
     }
+  }
+}
+
+export async function refreshScanSessionSnapshot(
+  serviceDay: string,
+  signal?: AbortSignal,
+): Promise<SnapshotRefreshResult> {
+  if (!hasNocoDbConfig()) {
+    const cached = loadSnapshot()
+    const snapshot = applyPendingScans(
+      cached ?? {
+        serviceDay,
+        downloadedAt: new Date().toISOString(),
+        source: 'demo',
+        records: [],
+      },
+    )
+    saveSnapshot(snapshot)
+
+    return {
+      snapshot,
+      message: 'Demo cache ready',
+      pendingCount: loadPendingScans().length,
+    }
+  }
+
+  const snapshot = applyPendingScans({
+    serviceDay,
+    downloadedAt: new Date().toISOString(),
+    source: 'remote',
+    records: await fetchAllRecords(signal),
+  })
+  saveSnapshot(snapshot)
+
+  return {
+    snapshot,
+    message: `DB checked ${snapshot.records.length} rows`,
+    pendingCount: loadPendingScans().length,
   }
 }
 
@@ -301,7 +345,7 @@ export function resetOfflineStoreForTests() {
   memoryStorage.clear()
 }
 
-async function fetchAllRecords(): Promise<StoredMealRecord[]> {
+async function fetchAllRecords(signal?: AbortSignal): Promise<StoredMealRecord[]> {
   const rows: FlexibleRecord[] = []
   let page = 1
   let isLastPage = false
@@ -313,6 +357,7 @@ async function fetchAllRecords(): Promise<StoredMealRecord[]> {
 
     const response = await fetch(url, {
       headers: nocoDbHeaders(),
+      signal,
     })
     const body = await safeJson(response)
     if (!response.ok) {

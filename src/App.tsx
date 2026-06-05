@@ -19,6 +19,7 @@ import {
   hasNocoDbConfig,
   loadCachedSnapshot,
   pendingScanCount,
+  refreshScanSessionSnapshot,
   startScanSession,
   syncPendingScans,
   validateOfflineScan,
@@ -67,6 +68,7 @@ const statusLabel = {
 
 const apiMode = hasNocoDbConfig() ? 'NocoDB' : 'Demo'
 const autoReleaseMs = 1450
+const preScanRefreshTimeoutMs = 1500
 
 function App() {
   const serviceDay = useMemo(() => serviceDayFor(new Date()), [])
@@ -81,6 +83,8 @@ function App() {
   const [sessionMessage, setSessionMessage] = useState('')
   const [syncMessage, setSyncMessage] = useState('')
   const [syncing, setSyncing] = useState(false)
+  const [refreshingDb, setRefreshingDb] = useState(false)
+  const [freshnessError, setFreshnessError] = useState('')
   const lockedRef = useRef(false)
   const releaseTimerRef = useRef<number | undefined>(undefined)
   const syncInFlightRef = useRef(false)
@@ -126,7 +130,7 @@ function App() {
       await refreshNetwork()
       const result = await syncPendingScans()
       setPendingCount(result.pendingCount)
-      if (visible || result.syncedCount > 0) {
+      if (visible || result.syncedCount > 0 || result.failedCount > 0) {
         setSyncMessage(result.message)
       }
     } finally {
@@ -135,11 +139,40 @@ function App() {
     }
   }, [refreshNetwork])
 
+  const refreshSnapshotForScan = useCallback(async (): Promise<ScanSessionSnapshot | null> => {
+    if (!hasNocoDbConfig()) {
+      setFreshnessError('')
+      return snapshot
+    }
+
+    const controller = new AbortController()
+    const timeoutId = window.setTimeout(() => controller.abort(), preScanRefreshTimeoutMs)
+    setRefreshingDb(true)
+    setFreshnessError('')
+
+    try {
+      const result = await refreshScanSessionSnapshot(serviceDay, controller.signal)
+      setSnapshot(result.snapshot)
+      setPendingCount(result.pendingCount)
+      setSyncMessage(result.message)
+      return result.snapshot
+    } catch {
+      const message = controller.signal.aborted ? 'DB check skipped, local cache used' : 'DB check failed, local cache used'
+      setFreshnessError(message)
+      setSyncMessage(message)
+      return snapshot
+    } finally {
+      window.clearTimeout(timeoutId)
+      setRefreshingDb(false)
+    }
+  }, [serviceDay, snapshot])
+
   const startSession = async () => {
     setSessionState('loading')
     setSessionMessage(`Loading ${selectedMeal.label}`)
     setCurrentScan(null)
     setRecentScans([])
+    setFreshnessError('')
     clearReleaseTimer()
     releaseScanner()
 
@@ -208,9 +241,14 @@ function App() {
       setCurrentScan({ ...pendingScan, status: 'checking' })
 
       try {
+        const validationSnapshot = hasNocoDbConfig() ? await refreshSnapshotForScan() : snapshot
+        if (hasNocoDbConfig() && !validationSnapshot) {
+          throw new Error('No local DB snapshot available')
+        }
+
         const validation =
-          hasNocoDbConfig() && snapshot
-            ? validateOfflineScan(snapshot, parsed, selectedMeal, serviceDay)
+          hasNocoDbConfig() && validationSnapshot
+            ? validateOfflineScan(validationSnapshot, parsed, selectedMeal, serviceDay)
             : {
                 result: await validateFoodPass(parsed, serviceDay, selectedMeal),
                 snapshot,
@@ -249,6 +287,7 @@ function App() {
     [
       pendingCount,
       rememberScan,
+      refreshSnapshotForScan,
       scheduleRelease,
       selectedMeal,
       serviceDay,
@@ -306,8 +345,10 @@ function App() {
   const CurrentIcon = currentScan ? statusIcon[currentStatus] : ScanLine
   const headerTitle = sessionState === 'scanning' ? selectedMeal.label : 'Festival Food Scan'
   const headerSubtitle = sessionState === 'scanning' ? 'Scan session active' : serviceDay
-  const SyncIcon = syncing ? RefreshCw : pendingCount > 0 ? CloudUpload : CloudCheck
-  const syncLabel = syncing ? 'Syncing' : pendingCount > 0 ? `${pendingCount} queued` : 'Synced'
+  const syncStatus = refreshingDb ? 'refreshing' : freshnessError ? 'stale' : pendingCount > 0 ? 'queued' : 'synced'
+  const SyncIcon = syncing || refreshingDb ? RefreshCw : freshnessError ? TriangleAlert : pendingCount > 0 ? CloudUpload : CloudCheck
+  const syncLabel = refreshingDb ? 'Checking DB' : syncing ? 'Syncing' : freshnessError ? 'Local DB' : pendingCount > 0 ? `${pendingCount} queued` : 'Synced'
+  const syncAriaLabel = freshnessError ? `${syncLabel}: ${freshnessError}` : `Sync status: ${syncLabel}`
 
   return (
     <main className={`app-shell ${sessionState === 'scanning' ? 'scan-mode' : 'setup-mode'}`}>
@@ -332,7 +373,7 @@ function App() {
 
         <div className="top-actions">
           <span className={`mode-pill ${apiMode === 'NocoDB' ? 'live' : 'demo'}`}>{apiMode}</span>
-          <span className={`status-pill sync ${pendingCount > 0 ? 'queued' : 'synced'}`} aria-label={`Sync status: ${syncLabel}`}>
+          <span className={`status-pill sync ${syncStatus}`} aria-label={syncAriaLabel} title={freshnessError || syncLabel}>
             <SyncIcon size={15} aria-hidden="true" />
             {syncLabel}
           </span>

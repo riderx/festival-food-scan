@@ -162,6 +162,16 @@ h1 {
   border-color: rgba(250, 204, 21, 0.4);
 }
 
+.status-pill.stale {
+  color: #fecaca;
+  border-color: rgba(248, 113, 113, 0.44);
+}
+
+.status-pill.refreshing {
+  color: #bae6fd;
+  border-color: rgba(56, 189, 248, 0.34);
+}
+
 .status-pill.synced {
   color: #bae6fd;
   border-color: rgba(56, 189, 248, 0.34);
@@ -173,6 +183,10 @@ h1 {
 
 .status-pill.sync svg {
   flex: 0 0 auto;
+}
+
+.status-pill.refreshing svg {
+  animation: spin 0.9s linear infinite;
 }
 
 .queue-pill {
