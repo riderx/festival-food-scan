@@ -10,13 +10,11 @@ import ScanLine from 'lucide-react/dist/esm/icons/scan-line.mjs'
 import ShieldX from 'lucide-react/dist/esm/icons/shield-x.mjs'
 import TriangleAlert from 'lucide-react/dist/esm/icons/triangle-alert.mjs'
 import Utensils from 'lucide-react/dist/esm/icons/utensils.mjs'
-import Wifi from 'lucide-react/dist/esm/icons/wifi.mjs'
-import WifiOff from 'lucide-react/dist/esm/icons/wifi-off.mjs'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import './App.css'
 import { parseQrPayload, serviceDayFor, validateFoodPass } from './domain/mealPass'
 import type { FoodPassResult, FoodPassStatus } from './domain/mealPass'
-import { mealSessionByKey, mealSessions } from './domain/mealSessions'
+import { mealSessionByKey, mealSessionGroups, mealSessions } from './domain/mealSessions'
 import {
   hasNocoDbConfig,
   loadCachedSnapshot,
@@ -274,6 +272,12 @@ function App() {
     return () => window.clearTimeout(syncTimer)
   }, [syncQueuedWrites])
 
+  useEffect(() => {
+    if (network.online && pendingCount > 0) {
+      void syncQueuedWrites(false)
+    }
+  }, [network.online, pendingCount, syncQueuedWrites])
+
   useEffect(() => clearReleaseTimer, [clearReleaseTimer])
 
   const stats = useMemo(
@@ -288,23 +292,34 @@ function App() {
     [recentScans],
   )
 
+  const expectedMealCount = useMemo(
+    () =>
+      snapshot?.records.filter((record) => record.paymentDate && record.entitlements[selectedMeal.key] === true).length ?? 0,
+    [selectedMeal.key, snapshot],
+  )
+
   const currentStatus = currentScan?.status ?? 'error'
   const CurrentIcon = currentScan ? statusIcon[currentStatus] : ScanLine
-  const blockedCount = stats.already_used + stats.needs_payment + stats.not_found + stats.error
   const headerTitle = sessionState === 'scanning' ? selectedMeal.label : 'Festival Food Scan'
   const headerSubtitle = sessionState === 'scanning' ? 'Scan session active' : serviceDay
-  const NetworkIcon = network.online ? Wifi : WifiOff
   const SyncIcon = syncing ? RefreshCw : pendingCount > 0 ? CloudUpload : CloudCheck
-  const networkLabel = network.online ? network.connectionType : 'offline'
   const syncLabel = syncing ? 'Syncing' : pendingCount > 0 ? `${pendingCount} queued` : 'Synced'
 
   return (
     <main className={`app-shell ${sessionState === 'scanning' ? 'scan-mode' : 'setup-mode'}`}>
       <header className="top-bar">
+        {sessionState === 'scanning' && (
+          <button className="icon-button header-back" type="button" onClick={leaveSession} aria-label="Leave scan session">
+            <ArrowLeft size={17} aria-hidden="true" />
+          </button>
+        )}
+
         <div className="brand-lockup" aria-label="Festival Food Scan">
-          <span className="brand-mark">
-            <Utensils size={18} aria-hidden="true" />
-          </span>
+          {sessionState !== 'scanning' && (
+            <span className="brand-mark">
+              <Utensils size={18} aria-hidden="true" />
+            </span>
+          )}
           <div>
             <h1>{headerTitle}</h1>
             <p>{headerSubtitle}</p>
@@ -313,20 +328,10 @@ function App() {
 
         <div className="top-actions">
           <span className={`mode-pill ${apiMode === 'NocoDB' ? 'live' : 'demo'}`}>{apiMode}</span>
-          <span className={`status-pill ${network.online ? 'online' : 'offline'}`} title={network.error ?? network.connectionType}>
-            <NetworkIcon size={15} aria-hidden="true" />
-            {networkLabel}
-          </span>
           <span className={`status-pill sync ${pendingCount > 0 ? 'queued' : 'synced'}`} aria-label={`Sync status: ${syncLabel}`}>
             <SyncIcon size={15} aria-hidden="true" />
             {syncLabel}
           </span>
-          {sessionState === 'scanning' && (
-            <button className="secondary-action top-exit" type="button" onClick={leaveSession}>
-              <ArrowLeft size={15} aria-hidden="true" />
-              Leave
-            </button>
-          )}
         </div>
       </header>
 
@@ -340,19 +345,28 @@ function App() {
             </div>
           </div>
 
-          <div className="meal-grid" role="radiogroup" aria-label="Meal session">
-            {mealSessions.map((session) => (
-              <button
-                className={session.key === selectedMealKey ? 'selected' : ''}
-                type="button"
-                role="radio"
-                aria-checked={session.key === selectedMealKey}
-                key={session.key}
-                onClick={() => setSelectedMealKey(session.key)}
-                disabled={sessionState === 'loading'}
-              >
-                {session.label}
-              </button>
+          <div className="meal-picker" role="radiogroup" aria-label="Meal session">
+            {mealSessionGroups.map((group) => (
+              <section className="meal-day-group" role="group" aria-labelledby={`meal-day-${group.dayKey}`} key={group.dayKey}>
+                <h3 className="meal-day-title" id={`meal-day-${group.dayKey}`}>
+                  {group.dayLabel}
+                </h3>
+                <div className="meal-grid">
+                  {group.sessions.map((session) => (
+                    <button
+                      className={session.key === selectedMealKey ? 'selected' : ''}
+                      type="button"
+                      role="radio"
+                      aria-checked={session.key === selectedMealKey}
+                      key={session.key}
+                      onClick={() => setSelectedMealKey(session.key)}
+                      disabled={sessionState === 'loading'}
+                    >
+                      {session.mealLabel}
+                    </button>
+                  ))}
+                </div>
+              </section>
             ))}
           </div>
 
@@ -404,12 +418,12 @@ function App() {
                 <span>Validés</span>
               </div>
               <div>
-                <strong>{blockedCount}</strong>
-                <span>Bloqués</span>
+                <strong>{expectedMealCount}</strong>
+                <span>Attendus</span>
               </div>
               <div>
                 <strong>{recentScans.length}</strong>
-                <span>Total</span>
+                <span>Scans</span>
               </div>
             </div>
 

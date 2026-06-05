@@ -214,6 +214,14 @@ button {
   border-radius: 7px;
 }
 
+.header-back {
+  flex: 0 0 auto;
+}
+
+.scan-mode .brand-lockup {
+  flex-basis: 0;
+}
+
 .icon-button:focus-visible,
 .primary-action:focus-visible,
 .secondary-action:focus-visible,
@@ -255,10 +263,35 @@ button {
   font-size: 14px;
 }
 
+.meal-picker {
+  display: grid;
+  gap: 10px;
+}
+
+.meal-day-group {
+  display: grid;
+  grid-template-columns: minmax(86px, 104px) minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  padding: 10px;
+  border-radius: 8px;
+  border: 1px solid rgba(226, 232, 240, 0.12);
+  background: rgba(15, 23, 42, 0.48);
+}
+
+.meal-day-title {
+  margin: 0;
+  color: #f8fafc;
+  font-size: 14px;
+  line-height: 1.1;
+  font-weight: 800;
+  letter-spacing: 0;
+}
+
 .meal-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 7px;
 }
 
 .meal-grid button {
@@ -316,11 +349,6 @@ button {
 }
 
 .secondary-action.compact {
-  min-height: 34px;
-  padding: 0 10px;
-}
-
-.secondary-action.top-exit {
   min-height: 34px;
   padding: 0 10px;
 }
@@ -691,15 +719,24 @@ button {
 }
 
 @media (max-width: 420px) {
+  .meal-day-group {
+    grid-template-columns: 82px minmax(0, 1fr);
+    gap: 8px;
+    padding: 8px;
+  }
+
+  .meal-day-title {
+    font-size: 13px;
+  }
+
   .meal-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 6px;
+    gap: 5px;
   }
 
   .meal-grid button {
     min-height: 44px;
-    padding: 0 8px;
-    font-size: 13px;
+    padding: 0 4px;
+    font-size: 12px;
   }
 
   .setup-actions {
@@ -749,8 +786,7 @@ button {
     display: none;
   }
 
-  .status-pill,
-  .secondary-action.top-exit {
+  .status-pill {
     height: 32px;
     min-height: 32px;
     padding-inline: 8px;
@@ -820,7 +856,7 @@ button {
   }
 
   .meal-grid button {
-    min-height: 40px;
+    min-height: 42px;
   }
 
   .setup-actions {

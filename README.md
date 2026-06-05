@@ -12,7 +12,7 @@ Scan session page:
 
 The scanner uses Capgo Camera Preview (`@capgo/camera-preview`) with its native `barcodeScanner` QR feature. It does not use the basic Capacitor Camera API.
 
-Network status uses Capgo Network Diagnostics (`@capgo/capacitor-network-diagnostics`) so the header can show online/offline and sync queue state.
+Network status uses Capgo Network Diagnostics (`@capgo/capacitor-network-diagnostics`) internally for sync retries. The UI only shows the sync queue state.
 
 ## Current NocoDB Table
 
