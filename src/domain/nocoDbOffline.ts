@@ -9,6 +9,7 @@ export type StoredMealRecord = {
   email: string
   personLabel: string
   paymentDate?: string
+  arrived: boolean
   entitlements: Record<string, boolean>
   scannedAt: Record<string, string | undefined>
   scannedFieldPresent: Record<string, boolean>
@@ -21,17 +22,27 @@ export type ScanSessionSnapshot = {
   records: StoredMealRecord[]
 }
 
-export type PendingScanWrite = {
+type BasePendingScanWrite = {
   id: string
   recordId: number
   email: string
   personLabel: string
   serviceDay: string
-  mealSessionKey: string
-  mealSessionLabel: string
   scannedAt: string
   createdAt: string
 }
+
+export type MealPendingScanWrite = BasePendingScanWrite & {
+  kind?: 'meal'
+  mealSessionKey: string
+  mealSessionLabel: string
+}
+
+export type ArrivalPendingScanWrite = BasePendingScanWrite & {
+  kind: 'arrival'
+}
+
+export type PendingScanWrite = MealPendingScanWrite | ArrivalPendingScanWrite
 
 export type SessionStartResult = {
   snapshot: ScanSessionSnapshot
@@ -43,6 +54,7 @@ export type SessionStartResult = {
 export type StartScanSessionOptions = {
   skipRemote?: boolean
   timeoutMs?: number
+  targetLabel?: string
 }
 
 export type SnapshotRefreshResult = {
@@ -87,6 +99,8 @@ export async function startScanSession(
   serviceDay: string,
   options: StartScanSessionOptions = {},
 ): Promise<SessionStartResult> {
+  const targetLabel = options.targetLabel ?? mealSession.label
+
   if (!hasNocoDbConfig()) {
     const snapshot = applyPendingScans({
       serviceDay,
@@ -99,13 +113,13 @@ export async function startScanSession(
     return {
       snapshot,
       source: 'demo',
-      message: `Demo session ready for ${mealSession.label}`,
+      message: `Demo session ready for ${targetLabel}`,
       pendingCount: loadPendingScans().length,
     }
   }
 
   if (options.skipRemote) {
-    return startCachedSession(mealSession, 'Offline mode')
+    return startCachedSession(targetLabel, 'Offline mode')
   }
 
   const syncResult = await syncPendingScans({ timeoutMs: options.timeoutMs })
@@ -303,6 +317,81 @@ export function validateOfflineScan(
   }
 }
 
+export function validateOfflineArrival(
+  snapshot: ScanSessionSnapshot,
+  payload: QrPayload,
+  serviceDay: string,
+): OfflineScanResult {
+  if (!hasNocoDbConfig()) {
+    const result = validateDemoArrival(payload, serviceDay)
+    return {
+      result,
+      snapshot,
+      pendingCount: loadPendingScans().length,
+    }
+  }
+
+  const email = normalizeEmail(payload.token)
+  if (!email) {
+    return unchanged(snapshot, arrivalResult('not_found', payload, serviceDay, 'QR code must contain an email', undefined))
+  }
+
+  const matchingRecords = snapshot.records.filter((record) => record.email === email)
+  if (matchingRecords.length === 0) {
+    return unchanged(snapshot, arrivalResult('not_found', payload, serviceDay, 'No row found for this email', email))
+  }
+
+  const paidRecords = matchingRecords.filter((record) => record.paymentDate).sort((a, b) => a.id - b.id)
+  const availableRecord = paidRecords.find((record) => !record.arrived)
+  if (!availableRecord && paidRecords.length > 0) {
+    return unchanged(
+      snapshot,
+      arrivalResult(
+        'already_used',
+        payload,
+        serviceDay,
+        `All ${paidRecords.length} arrival pass${paidRecords.length === 1 ? '' : 'es'} are already used`,
+        email,
+      ),
+    )
+  }
+
+  if (!availableRecord) {
+    return unchanged(snapshot, arrivalResult('needs_payment', payload, serviceDay, 'Payment missing', email))
+  }
+
+  const scannedAt = formatNocoDbDateTime(new Date())
+  const updatedRecord: StoredMealRecord = {
+    ...availableRecord,
+    arrived: true,
+  }
+  const updatedSnapshot = {
+    ...snapshot,
+    records: snapshot.records.map((item) => (item.id === availableRecord.id ? updatedRecord : item)),
+  }
+
+  enqueuePendingScan({
+    kind: 'arrival',
+    id: crypto.randomUUID(),
+    recordId: availableRecord.id,
+    email: availableRecord.email,
+    personLabel: availableRecord.personLabel,
+    serviceDay,
+    scannedAt,
+    createdAt: new Date().toISOString(),
+  })
+  saveSnapshot(updatedSnapshot)
+
+  return {
+    result: {
+      ...arrivalResult('ok', payload, serviceDay, 'Arrival marked. Sync queued.', availableRecord.personLabel),
+      usedAt: scannedAt,
+    },
+    snapshot: updatedSnapshot,
+    pendingCount: loadPendingScans().length,
+  }
+}
+
 export async function syncPendingScans(options: SyncPendingScansOptions = {}): Promise<SyncResult> {
   const pending = loadPendingScans()
   if (pending.length === 0) {
@@ -364,7 +453,7 @@ export function resetOfflineStoreForTests() {
   memoryStorage.clear()
 }
 
-function startCachedSession(mealSession: MealSession, prefix: string): SessionStartResult {
+function startCachedSession(targetLabel: string, prefix: string): SessionStartResult {
   const cached = loadSnapshot()
   if (!cached) {
     throw new Error('Cannot download NocoDB rows and no cache exists')
@@ -379,7 +468,7 @@ function startCachedSession(mealSession: MealSession, prefix: string): SessionSt
   return {
     snapshot,
     source: 'cache',
-    message: `${prefix} using ${snapshot.records.length} cached rows for ${mealSession.label}`,
+    message: `${prefix} using ${snapshot.records.length} cached rows for ${targetLabel}`,
     pendingCount: loadPendingScans().length,
   }
 }
@@ -434,6 +523,7 @@ function nocoDbRowToStoredRecord(row: FlexibleRecord): StoredMealRecord {
     email,
     personLabel,
     paymentDate: readString(row, 'Date paiement'),
+    arrived: readBoolean(row, 'Arrivé') === true,
     entitlements,
     scannedAt,
     scannedFieldPresent,
@@ -441,9 +531,15 @@ function nocoDbRowToStoredRecord(row: FlexibleRecord): StoredMealRecord {
 }
 
 async function patchNocoDbScan(scan: PendingScanWrite, timeoutMs = nocoDbWriteTimeoutMs): Promise<void> {
-  const mealSession = mealSessions.find((session) => session.key === scan.mealSessionKey)
-  if (!mealSession) {
-    throw new Error(`Unknown meal session ${scan.mealSessionKey}`)
+  const patch =
+    scan.kind === 'arrival'
+      ? {
+          Id: scan.recordId,
+          Arrivé: true,
+        }
+      : mealScanPatch(scan)
+  if (!patch) {
+    throw new Error(`Unknown meal session ${'mealSessionKey' in scan ? scan.mealSessionKey : ''}`)
   }
 
   const timeout = timeoutSignal(timeoutMs)
@@ -454,13 +550,7 @@ async function patchNocoDbScan(scan: PendingScanWrite, timeoutMs = nocoDbWriteTi
         ...nocoDbHeaders(),
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify([
-        {
-          Id: scan.recordId,
-          [mealSession.scannedAtField]: scan.scannedAt,
-          Arrivé: true,
-        },
-      ]),
+      body: JSON.stringify([patch]),
       signal: timeout.signal,
     })
 
@@ -470,6 +560,19 @@ async function patchNocoDbScan(scan: PendingScanWrite, timeoutMs = nocoDbWriteTi
     }
   } finally {
     timeout.cleanup()
+  }
+}
+
+function mealScanPatch(scan: MealPendingScanWrite): Record<string, unknown> | null {
+  const mealSession = mealSessions.find((session) => session.key === scan.mealSessionKey)
+  if (!mealSession) {
+    return null
+  }
+
+  return {
+    Id: scan.recordId,
+    [mealSession.scannedAtField]: scan.scannedAt,
+    Arrivé: true,
   }
 }
 
@@ -503,6 +606,32 @@ function validateDemoSnapshot(
   }
 }
 
+function validateDemoArrival(payload: QrPayload, serviceDay: string): FoodPassResult {
+  const key = `festival-food-scan:demo:arrival:${serviceDay}`
+  const email = normalizeEmail(payload.token) || payload.token.trim()
+  const used = readStringMap(key)
+  if (payload.paid === false || email.toLowerCase().startsWith('pay:')) {
+    return arrivalResult('needs_payment', payload, serviceDay, 'Payment missing', email)
+  }
+  if (email.toLowerCase().includes('notfound') || email.toLowerCase().includes('invalid')) {
+    return arrivalResult('not_found', payload, serviceDay, 'No matching row', email)
+  }
+  if (used[email]) {
+    return {
+      ...arrivalResult('already_used', payload, serviceDay, `Used at ${formatTime(used[email])}`, email),
+      usedAt: used[email],
+    }
+  }
+
+  const scannedAt = new Date().toISOString()
+  used[email] = scannedAt
+  writeStringMap(key, used)
+  return {
+    ...arrivalResult('ok', payload, serviceDay, 'Arrival marked', email),
+    usedAt: scannedAt,
+  }
+}
+
 function applyPendingScans(snapshot: ScanSessionSnapshot): ScanSessionSnapshot {
   const pending = loadPendingScans()
   if (pending.length === 0) {
@@ -519,15 +648,33 @@ function applyPendingScans(snapshot: ScanSessionSnapshot): ScanSessionSnapshot {
 
       return {
         ...record,
+        arrived: recordWrites.some((scan) => scan.kind === 'arrival') || record.arrived,
         scannedAt: recordWrites.reduce(
           (acc, scan) => ({
             ...acc,
-            [scan.mealSessionKey]: scan.scannedAt,
+            ...('mealSessionKey' in scan ? { [scan.mealSessionKey]: scan.scannedAt } : {}),
           }),
           record.scannedAt,
         ),
       }
     }),
+  }
+}
+
+function arrivalResult(
+  status: FoodPassResult['status'],
+  payload: QrPayload,
+  serviceDay: string,
+  message: string,
+  personLabel: string | undefined,
+): FoodPassResult {
+  return {
+    status,
+    title: statusLabel(status),
+    message,
+    serviceDay,
+    token: payload.token,
+    personLabel,
   }
 }
 
@@ -732,16 +879,26 @@ function isStringMap(value: unknown): value is Record<string, string> {
 }
 
 function isPendingScanWrite(value: unknown): value is PendingScanWrite {
+  if (
+    !isRecord(value) ||
+    typeof value.id !== 'string' ||
+    typeof value.recordId !== 'number' ||
+    typeof value.email !== 'string' ||
+    typeof value.personLabel !== 'string' ||
+    typeof value.serviceDay !== 'string' ||
+    typeof value.scannedAt !== 'string' ||
+    typeof value.createdAt !== 'string'
+  ) {
+    return false
+  }
+
+  if (value.kind === 'arrival') {
+    return true
+  }
+
   return (
-    isRecord(value) &&
-    typeof value.id === 'string' &&
-    typeof value.recordId === 'number' &&
-    typeof value.email === 'string' &&
-    typeof value.personLabel === 'string' &&
-    typeof value.serviceDay === 'string' &&
+    (value.kind === undefined || value.kind === 'meal') &&
     typeof value.mealSessionKey === 'string' &&
-    typeof value.mealSessionLabel === 'string' &&
-    typeof value.scannedAt === 'string' &&
-    typeof value.createdAt === 'string'
+    typeof value.mealSessionLabel === 'string'
   )
 }

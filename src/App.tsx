@@ -22,6 +22,7 @@ import {
   refreshScanSessionSnapshot,
   startScanSession,
   syncPendingScans,
+  validateOfflineArrival,
   validateOfflineScan,
 } from './domain/nocoDbOffline'
 import type { ScanSessionSnapshot } from './domain/nocoDbOffline'
@@ -40,6 +41,7 @@ type CurrentScan = Omit<ScanEvent, 'status'> & {
 
 type ScanStats = Record<FoodPassStatus, number>
 type SessionState = 'setup' | 'loading' | 'scanning'
+type ScanTargetKind = 'arrival' | 'meal'
 
 const emptyStats: ScanStats = {
   ok: 0,
@@ -72,11 +74,21 @@ const autoReleaseMs = 1450
 const preScanRefreshTimeoutMs = 1200
 const startScanRemoteTimeoutMs = 1800
 const syncWriteTimeoutMs = 1500
+const arrivalTarget = {
+  kind: 'arrival' as const,
+  key: 'arrival',
+  label: 'Entrée festival',
+}
 
 function App() {
   const serviceDay = useMemo(() => serviceDayFor(new Date()), [])
+  const [selectedTargetKind, setSelectedTargetKind] = useState<ScanTargetKind>('meal')
   const [selectedMealKey, setSelectedMealKey] = useState(mealSessions[0].key)
   const selectedMeal = useMemo(() => mealSessionByKey(selectedMealKey), [selectedMealKey])
+  const selectedTarget = useMemo(
+    () => (selectedTargetKind === 'arrival' ? arrivalTarget : { ...selectedMeal, kind: 'meal' as const }),
+    [selectedMeal, selectedTargetKind],
+  )
   const [sessionState, setSessionState] = useState<SessionState>('setup')
   const [snapshot, setSnapshot] = useState<ScanSessionSnapshot | null>(() => loadCachedSnapshot())
   const [locked, setLocked] = useState(false)
@@ -204,7 +216,7 @@ function App() {
 
   const startSession = async () => {
     setSessionState('loading')
-    setSessionMessage(`Loading ${selectedMeal.label}`)
+    setSessionMessage(`Loading ${selectedTarget.label}`)
     setCurrentScan(null)
     setRecentScans([])
     setFreshnessError('')
@@ -217,6 +229,7 @@ function App() {
       const result = await startScanSession(selectedMeal, serviceDay, {
         skipRemote,
         timeoutMs: startScanRemoteTimeoutMs,
+        targetLabel: selectedTarget.label,
       })
       setSnapshot(result.snapshot)
       setPendingCount(result.pendingCount)
@@ -262,8 +275,12 @@ function App() {
           message: error instanceof Error ? error.message : 'QR invalide',
           serviceDay,
           token: raw,
-          mealSessionKey: selectedMeal.key,
-          mealSessionLabel: selectedMeal.label,
+          ...(selectedTarget.kind === 'meal'
+            ? {
+                mealSessionKey: selectedMeal.key,
+                mealSessionLabel: selectedMeal.label,
+              }
+            : {}),
         })
         scheduleRelease()
         return
@@ -277,8 +294,12 @@ function App() {
         message: 'Validation locale',
         serviceDay,
         token: parsed.token,
-        mealSessionKey: selectedMeal.key,
-        mealSessionLabel: selectedMeal.label,
+        ...(selectedTarget.kind === 'meal'
+          ? {
+              mealSessionKey: selectedMeal.key,
+              mealSessionLabel: selectedMeal.label,
+            }
+          : {}),
       }
 
       setCurrentScan({ ...pendingScan, status: 'checking' })
@@ -291,10 +312,15 @@ function App() {
 
         const validation =
           hasNocoDbConfig() && validationSnapshot
-            ? validateOfflineScan(validationSnapshot, parsed, selectedMeal, serviceDay)
+            ? selectedTarget.kind === 'arrival'
+              ? validateOfflineArrival(validationSnapshot, parsed, serviceDay)
+              : validateOfflineScan(validationSnapshot, parsed, selectedMeal, serviceDay)
             : {
-                result: await validateFoodPass(parsed, serviceDay, selectedMeal),
-                snapshot,
+                result:
+                  selectedTarget.kind === 'arrival'
+                    ? validateOfflineArrival(snapshot ?? demoSnapshot(serviceDay), parsed, serviceDay).result
+                    : await validateFoodPass(parsed, serviceDay, selectedMeal),
+                snapshot: snapshot ?? demoSnapshot(serviceDay),
                 pendingCount,
               }
 
@@ -320,8 +346,12 @@ function App() {
           message: error instanceof Error ? error.message : 'Validation failed',
           serviceDay,
           token: parsed.token,
-          mealSessionKey: selectedMeal.key,
-          mealSessionLabel: selectedMeal.label,
+          ...(selectedTarget.kind === 'meal'
+            ? {
+                mealSessionKey: selectedMeal.key,
+                mealSessionLabel: selectedMeal.label,
+              }
+            : {}),
         })
       } finally {
         scheduleRelease()
@@ -333,6 +363,7 @@ function App() {
       refreshSnapshotForScan,
       scheduleRelease,
       selectedMeal,
+      selectedTarget,
       serviceDay,
       sessionState,
       snapshot,
@@ -380,13 +411,17 @@ function App() {
 
   const expectedMealCount = useMemo(
     () =>
-      snapshot?.records.filter((record) => record.paymentDate && record.entitlements[selectedMeal.key] === true).length ?? 0,
-    [selectedMeal.key, snapshot],
+      snapshot?.records.filter((record) =>
+        selectedTarget.kind === 'arrival'
+          ? Boolean(record.paymentDate)
+          : record.paymentDate && record.entitlements[selectedMeal.key] === true,
+      ).length ?? 0,
+    [selectedMeal.key, selectedTarget.kind, snapshot],
   )
 
   const currentStatus = currentScan?.status ?? 'error'
   const CurrentIcon = currentScan ? statusIcon[currentStatus] : ScanLine
-  const headerTitle = sessionState === 'scanning' ? selectedMeal.label : 'Festival Food Scan'
+  const headerTitle = sessionState === 'scanning' ? selectedTarget.label : 'Festival Food Scan'
   const headerSubtitle = sessionState === 'scanning' ? 'Scan session active' : serviceDay
   const syncStatus = refreshingDb ? 'refreshing' : freshnessError ? 'stale' : pendingCount > 0 ? 'queued' : 'synced'
   const SyncIcon = syncing || refreshingDb ? RefreshCw : freshnessError ? TriangleAlert : pendingCount > 0 ? CloudUpload : CloudCheck
@@ -428,12 +463,29 @@ function App() {
           <div className="setup-heading">
             <DatabaseZap size={26} aria-hidden="true" />
             <div>
-              <h2>Choisir le repas</h2>
+              <h2>Choisir le contrôle</h2>
               <p>{sessionMessage || 'Le choix reste verrouillé pendant la session de scan.'}</p>
             </div>
           </div>
 
           <div className="meal-picker" role="radiogroup" aria-label="Meal session">
+            <section className="meal-day-group arrival-group" role="group" aria-labelledby="scan-target-arrival">
+              <h3 className="meal-day-title" id="scan-target-arrival">
+                Festival
+              </h3>
+              <div className="meal-grid single">
+                <button
+                  className={selectedTargetKind === 'arrival' ? 'selected' : ''}
+                  type="button"
+                  role="radio"
+                  aria-checked={selectedTargetKind === 'arrival'}
+                  onClick={() => setSelectedTargetKind('arrival')}
+                  disabled={sessionState === 'loading'}
+                >
+                  Entrée festival
+                </button>
+              </div>
+            </section>
             {mealSessionGroups.map((group) => (
               <section className="meal-day-group" role="group" aria-labelledby={`meal-day-${group.dayKey}`} key={group.dayKey}>
                 <h3 className="meal-day-title" id={`meal-day-${group.dayKey}`}>
@@ -442,12 +494,15 @@ function App() {
                 <div className="meal-grid">
                   {group.sessions.map((session) => (
                     <button
-                      className={session.key === selectedMealKey ? 'selected' : ''}
+                      className={selectedTargetKind === 'meal' && session.key === selectedMealKey ? 'selected' : ''}
                       type="button"
                       role="radio"
-                      aria-checked={session.key === selectedMealKey}
+                      aria-checked={selectedTargetKind === 'meal' && session.key === selectedMealKey}
                       key={session.key}
-                      onClick={() => setSelectedMealKey(session.key)}
+                      onClick={() => {
+                        setSelectedTargetKind('meal')
+                        setSelectedMealKey(session.key)
+                      }}
                       disabled={sessionState === 'loading'}
                     >
                       {session.mealLabel}
@@ -536,4 +591,13 @@ export default App
 
 function cacheModeMessage(network: NetworkDiagnosticsState): string {
   return network.remoteUsable ? 'Local cache used' : `${network.reason}, local cache used`
+}
+
+function demoSnapshot(serviceDay: string): ScanSessionSnapshot {
+  return {
+    serviceDay,
+    downloadedAt: new Date().toISOString(),
+    source: 'demo',
+    records: [],
+  }
 }

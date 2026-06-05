@@ -308,6 +308,10 @@ button {
   gap: 7px;
 }
 
+.meal-grid.single {
+  grid-template-columns: minmax(0, 1fr);
+}
+
 .meal-grid button {
   min-height: 48px;
   border-radius: 8px;
@@ -736,7 +740,7 @@ button {
   .meal-day-group {
     grid-template-columns: 82px minmax(0, 1fr);
     gap: 8px;
-    padding: 8px;
+    padding: 7px 8px;
   }
 
   .meal-day-title {
@@ -748,7 +752,7 @@ button {
   }
 
   .meal-grid button {
-    min-height: 44px;
+    min-height: 42px;
     padding: 0 4px;
     font-size: 12px;
   }

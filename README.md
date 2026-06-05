@@ -1,6 +1,6 @@
 # Festival Food Scan
 
-Tiny Capacitor app for festival staff to scan food QR codes and mark one selected meal as used.
+Tiny Capacitor app for festival staff to scan QR codes, validate festival arrivals, and mark one selected meal as used.
 
 Setup page:
 
@@ -28,7 +28,7 @@ The app expects the QR code text to be the guest email. If several rows have the
 
 ## Scan Flow
 
-1. Staff chooses the meal once on the setup screen.
+1. Staff chooses `Entrée festival` or one meal once on the setup screen.
 2. Staff starts the scan session.
 3. The app checks whether the network is usable. No network, no internet, captive portal, constrained data, very low speed, or low speed all switch quickly to local cache mode.
 4. If the network is usable, the app downloads the NocoDB rows and applies any queued local scans.
@@ -36,14 +36,24 @@ The app expects the QR code text to be the guest email. If several rows have the
 6. The camera stays active for repeated scans.
 7. Every QR scan tries to refresh NocoDB first so another phone's recent scans are visible.
 8. If that refresh fails or is too slow, validation continues from the local cached rows and the sync pill shows `Local DB`.
-9. A successful scan is saved locally immediately and queued for NocoDB.
+9. A successful scan is saved locally immediately and queued for NocoDB. Arrival scans set `Arrivé`; meal scans set the selected `Scanned ...` timestamp and `Arrivé`.
 10. The app retries queued writes at session start, after each scan, when the network is usable, and when staff taps `Sync DB`.
 11. If internet is offline or NocoDB rejects a write, scanning continues and the write stays queued.
 12. To change the meal, staff leaves the scan session and chooses another meal.
 
 ## Validation Rules
 
-For the selected meal, the app checks the matching row fields:
+For `Entrée festival`, the app checks the matching row fields:
+
+| Result | Rule |
+| --- | --- |
+| `Oui, suivant` | `Date paiement` exists and an unused paid row exists for that email. The app sets `Arrivé`. |
+| `Déjà fait` | All paid rows for that email already have `Arrivé` checked. |
+| `Non payé` | Matching rows exist, but no paid row is available. |
+| `Inconnu` | No row exists for the scanned email. |
+| `Erreur` | The QR is invalid or the local DB snapshot is unavailable. |
+
+For a selected meal, the app checks the matching row fields:
 
 | Result | Rule |
 | --- | --- |
@@ -65,7 +75,7 @@ Existing fields verified in the table:
 | `Montant` | currency | Payment amount, informational for the app. |
 | `Mollie ID` | text | Payment id, informational for the app. |
 | `Date paiement` | datetime | Required payment marker. Empty means not paid. |
-| `Arrivé` | checkbox | App sets this to true when a scan is queued/synced. |
+| `Arrivé` | checkbox | Festival arrival marker. App reads it for `Entrée festival` and sets it true for arrival or successful meal scans. |
 | `Vegetarien` | checkbox | Menu info, informational for the app. |
 
 Meal entitlement checkboxes already exist:
@@ -156,9 +166,9 @@ End-to-end send flow:
 2. Fill `Nom`, `Email`, `Date paiement`, and the meal checkboxes.
 3. Generate one QR image from the `Email` value.
 4. Email the QR image to the guest.
-5. At the festival, staff picks the meal and starts a scan session.
+5. At the festival, staff picks `Entrée festival` or one meal and starts a scan session.
 6. Staff scans the guest QR code.
-7. The app consumes one eligible row for that email and queues the `Scanned ...` timestamp write.
+7. The app consumes one eligible row for that email and queues the `Arrivé` or `Scanned ...` write.
 
 ## Offline Behavior
 

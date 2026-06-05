@@ -5,6 +5,7 @@ import {
   resetOfflineStoreForTests,
   startScanSession,
   syncPendingScans,
+  validateOfflineArrival,
   validateOfflineScan,
 } from './nocoDbOffline'
 import type { ScanSessionSnapshot, StoredMealRecord } from './nocoDbOffline'
@@ -143,6 +144,48 @@ describe('offline NocoDB scan validation', () => {
     })
     expect(fetchMock).toHaveBeenCalledTimes(1)
   })
+
+  it('uses duplicate email rows as multiple arrival passes', () => {
+    const snapshot = snapshotWithRecords([
+      record({ id: 1, personLabel: 'Ada One' }),
+      record({ id: 2, personLabel: 'Ada Two' }),
+    ])
+    const payload = { raw: 'ada@example.com', token: 'ada@example.com' }
+
+    const first = validateOfflineArrival(snapshot, payload, '2026-06-05')
+    expect(first.result).toMatchObject({
+      status: 'ok',
+      personLabel: 'Ada One',
+    })
+
+    const second = validateOfflineArrival(first.snapshot, payload, '2026-06-05')
+    expect(second.result).toMatchObject({
+      status: 'ok',
+      personLabel: 'Ada Two',
+    })
+
+    const third = validateOfflineArrival(second.snapshot, payload, '2026-06-05')
+    expect(third.result.status).toBe('already_used')
+  })
+
+  it('syncs arrival scans by setting Arrivé only', async () => {
+    validateOfflineArrival(
+      snapshotWithRecords([record({ id: 1 })]),
+      { raw: 'ada@example.com', token: 'ada@example.com' },
+      '2026-06-05',
+    )
+    const fetchMock = vi.fn(async (...args: Parameters<typeof fetch>) => {
+      expect(args[1]?.method).toBe('PATCH')
+      return jsonResponse([])
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    const result = await syncPendingScans()
+    const body = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body)) as Record<string, unknown>[]
+
+    expect(result.pendingCount).toBe(0)
+    expect(body).toEqual([{ Id: 1, Arrivé: true }])
+  })
 })
 
 function jsonResponse(rows: Record<string, unknown>[]): Response {
@@ -182,6 +225,7 @@ function record(overrides: Partial<StoredMealRecord>): StoredMealRecord {
     email: 'ada@example.com',
     personLabel: 'Ada',
     paymentDate: '2026-06-01 10:00:00+00:00',
+    arrived: false,
     entitlements: { [mealSession.key]: true },
     scannedAt: {},
     scannedFieldPresent: { [mealSession.key]: true },
