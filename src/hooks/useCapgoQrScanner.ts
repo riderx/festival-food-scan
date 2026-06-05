@@ -1,28 +1,93 @@
 import { CameraPreview } from '@capgo/camera-preview'
 import type { BarcodeScannedEvent } from '@capgo/camera-preview'
+import { Capacitor } from '@capacitor/core'
 import { useCallback, useEffect, useRef, useState } from 'react'
 
 type UseCapgoQrScannerOptions = {
   enabled: boolean
   onScan: (value: string) => void | Promise<void>
+  previewSelector?: string
 }
 
 type ListenerHandle = {
   remove: () => Promise<void>
 }
 
-const duplicateWindowMs = 1800
+type PreviewBounds = {
+  x: number
+  y: number
+  width: number
+  height: number
+}
 
-export function useCapgoQrScanner({ enabled, onScan }: UseCapgoQrScannerOptions) {
+const duplicateWindowMs = 1800
+const defaultPreviewSelector = '.scanner-stage'
+
+function measurePreviewBounds(selector: string): PreviewBounds {
+  const target = document.querySelector<HTMLElement>(selector)
+  const rect = target?.getBoundingClientRect()
+
+  if (!rect || rect.width < 1 || rect.height < 1) {
+    return {
+      x: 0,
+      y: 0,
+      width: Math.max(1, Math.round(window.innerWidth)),
+      height: Math.max(1, Math.round(window.innerHeight)),
+    }
+  }
+
+  return {
+    x: Math.max(0, Math.round(rect.left)),
+    y: Math.max(0, Math.round(rect.top)),
+    width: Math.max(1, Math.round(rect.width)),
+    height: Math.max(1, Math.round(rect.height)),
+  }
+}
+
+function previewBoundsForPlatform(bounds: PreviewBounds): PreviewBounds {
+  if (Capacitor.getPlatform() === 'web') {
+    return {
+      ...bounds,
+      x: 0,
+      y: 0,
+    }
+  }
+
+  return bounds
+}
+
+function samePreviewBounds(left: PreviewBounds | null, right: PreviewBounds): boolean {
+  return Boolean(
+    left &&
+      left.x === right.x &&
+      left.y === right.y &&
+      left.width === right.width &&
+      left.height === right.height,
+  )
+}
+
+export function useCapgoQrScanner({
+  enabled,
+  onScan,
+  previewSelector = defaultPreviewSelector,
+}: UseCapgoQrScannerOptions) {
   const [active, setActive] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const onScanRef = useRef(onScan)
   const lastScanRef = useRef({ value: '', time: 0 })
   const listenerHandlesRef = useRef<ListenerHandle[]>([])
+  const activeRef = useRef(false)
+  const lastPreviewBoundsRef = useRef<PreviewBounds | null>(null)
+  const resizeTimerRef = useRef<number | undefined>(undefined)
 
   useEffect(() => {
     onScanRef.current = onScan
   }, [onScan])
+
+  const setActiveState = useCallback((value: boolean) => {
+    activeRef.current = value
+    setActive(value)
+  }, [])
 
   const removeListeners = useCallback(async () => {
     const handles = listenerHandlesRef.current
@@ -31,11 +96,32 @@ export function useCapgoQrScanner({ enabled, onScan }: UseCapgoQrScannerOptions)
   }, [])
 
   const stop = useCallback(async () => {
+    if (resizeTimerRef.current !== undefined) {
+      window.clearTimeout(resizeTimerRef.current)
+      resizeTimerRef.current = undefined
+    }
     await CameraPreview.stopBarcodeScanner().catch(() => undefined)
     await CameraPreview.stop().catch(() => undefined)
     await removeListeners()
-    setActive(false)
-  }, [removeListeners])
+    lastPreviewBoundsRef.current = null
+    setActiveState(false)
+  }, [removeListeners, setActiveState])
+
+  const syncPreviewBounds = useCallback(async () => {
+    if (!activeRef.current) {
+      return
+    }
+
+    const measuredBounds = measurePreviewBounds(previewSelector)
+    if (samePreviewBounds(lastPreviewBoundsRef.current, measuredBounds)) {
+      return
+    }
+
+    lastPreviewBoundsRef.current = measuredBounds
+    await CameraPreview.setPreviewSize(previewBoundsForPlatform(measuredBounds)).catch((resizeError: unknown) => {
+      setError(resizeError instanceof Error ? resizeError.message : 'Camera resize failed')
+    })
+  }, [previewSelector])
 
   const start = useCallback(async () => {
     setError(null)
@@ -73,12 +159,15 @@ export function useCapgoQrScanner({ enabled, onScan }: UseCapgoQrScannerOptions)
 
     listenerHandlesRef.current = [barcodeHandle, errorHandle]
 
+    const measuredBounds = measurePreviewBounds(previewSelector)
+    lastPreviewBoundsRef.current = measuredBounds
+
     await CameraPreview.start({
       parent: 'camera-preview',
       className: 'native-camera-preview',
+      ...previewBoundsForPlatform(measuredBounds),
       position: 'rear',
       toBack: true,
-      aspectRatio: 'fill',
       aspectMode: 'cover',
       disableAudio: true,
       force: true,
@@ -88,8 +177,38 @@ export function useCapgoQrScanner({ enabled, onScan }: UseCapgoQrScannerOptions)
       },
     })
 
-    setActive(true)
-  }, [removeListeners])
+    setActiveState(true)
+  }, [previewSelector, removeListeners, setActiveState])
+
+  useEffect(() => {
+    if (!enabled) {
+      return
+    }
+
+    const schedulePreviewSync = () => {
+      if (resizeTimerRef.current !== undefined) {
+        window.clearTimeout(resizeTimerRef.current)
+      }
+
+      resizeTimerRef.current = window.setTimeout(() => {
+        void syncPreviewBounds()
+      }, 120)
+    }
+
+    window.addEventListener('resize', schedulePreviewSync)
+    window.addEventListener('orientationchange', schedulePreviewSync)
+    window.visualViewport?.addEventListener('resize', schedulePreviewSync)
+
+    return () => {
+      window.removeEventListener('resize', schedulePreviewSync)
+      window.removeEventListener('orientationchange', schedulePreviewSync)
+      window.visualViewport?.removeEventListener('resize', schedulePreviewSync)
+      if (resizeTimerRef.current !== undefined) {
+        window.clearTimeout(resizeTimerRef.current)
+        resizeTimerRef.current = undefined
+      }
+    }
+  }, [enabled, syncPreviewBounds])
 
   useEffect(() => {
     if (!enabled) {

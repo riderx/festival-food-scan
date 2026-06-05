@@ -263,6 +263,7 @@ function App() {
   const scanner = useCapgoQrScanner({
     enabled: sessionState === 'scanning',
     onScan: handleRawScan,
+    previewSelector: '.scanner-stage',
   })
 
   useEffect(() => {
@@ -299,8 +300,6 @@ function App() {
 
   return (
     <main className={`app-shell ${sessionState === 'scanning' ? 'scan-mode' : 'setup-mode'}`}>
-      <div id="camera-preview" aria-hidden="true" />
-
       <header className="top-bar">
         <div className="brand-lockup" aria-label="Festival Food Scan">
           <span className="brand-mark">
@@ -377,6 +376,7 @@ function App() {
       ) : (
         <>
           <section className={`scanner-stage ${locked ? 'locked' : ''}`} aria-label="Scanner">
+            <div id="camera-preview" aria-hidden="true" />
             <div className="scan-frame">
               <div className="corner top-left" />
               <div className="corner top-right" />
