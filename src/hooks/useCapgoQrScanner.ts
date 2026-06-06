@@ -1,7 +1,7 @@
 import { CameraPreview } from '@capgo/camera-preview'
 import type { BarcodeScannedEvent } from '@capgo/camera-preview'
 import { Capacitor } from '@capacitor/core'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 
 type UseCapgoQrScannerOptions = {
   enabled: boolean
@@ -103,11 +103,14 @@ export function useCapgoQrScanner({
   const resizeTimerRef = useRef<number | undefined>(undefined)
   const restartTimerRef = useRef<number | undefined>(undefined)
   const restartingRef = useRef(false)
-  enabledRef.current = enabled
 
   useEffect(() => {
     onScanRef.current = onScan
   }, [onScan])
+
+  useLayoutEffect(() => {
+    enabledRef.current = enabled
+  }, [enabled])
 
   const setActiveState = useCallback((value: boolean) => {
     activeRef.current = value
@@ -351,7 +354,7 @@ export function useCapgoQrScanner({
       window.removeEventListener('blur', pauseForBackground)
       window.removeEventListener('focus', scheduleRestart)
     }
-  }, [enabled, start, stop])
+  }, [enabled, setActiveState, start, stop])
 
   useEffect(() => {
     if (!enabled) {
@@ -359,7 +362,6 @@ export function useCapgoQrScanner({
     }
 
     let cancelled = false
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     start().catch((startError: unknown) => {
       if (cancelled) {
         return
