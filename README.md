@@ -14,6 +14,10 @@ Guest QR fallback:
 
 ![Festival Food Scan guest QR generator](docs/qr-generator-screenshot.png)
 
+Manual validation:
+
+![Festival Food Scan manual validation](docs/manual-validation-screenshot.png)
+
 The scanner uses Capgo Camera Preview (`@capgo/camera-preview`) with its native `barcodeScanner` QR feature. It does not use the basic Capacitor Camera API.
 
 Network status uses Capgo Network Diagnostics (`@capgo/capacitor-network-diagnostics`) internally for sync retries. The UI only shows the sync queue state.
@@ -35,7 +39,7 @@ The app expects the QR code text to be the guest email. If several rows have the
 ## Scan Flow
 
 1. Staff chooses `Entrée festival` or one meal once on the setup screen.
-2. Staff starts the scan session.
+2. Staff starts the scan session, or uses `Ajout manuel` from the setup screen to validate one email without opening the camera.
 3. The app checks whether the network is usable. No network, no internet, captive portal, constrained data, very low speed, or low speed all switch quickly to local cache mode.
 4. If the network is usable, the app downloads the NocoDB rows and applies any queued local scans.
 5. The scan session count reads from the downloaded snapshot, so reopening a meal shows scans already synced by other phones.

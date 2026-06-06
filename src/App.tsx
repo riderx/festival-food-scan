@@ -12,12 +12,14 @@ import ScanLine from 'lucide-react/dist/esm/icons/scan-line.mjs'
 import ShieldX from 'lucide-react/dist/esm/icons/shield-x.mjs'
 import TriangleAlert from 'lucide-react/dist/esm/icons/triangle-alert.mjs'
 import Utensils from 'lucide-react/dist/esm/icons/utensils.mjs'
+import UserPlus from 'lucide-react/dist/esm/icons/user-plus.mjs'
 import X from 'lucide-react/dist/esm/icons/x.mjs'
 import { toSvg } from 'better-qr'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import type { FormEvent } from 'react'
 import './App.css'
 import { parseQrPayload, serviceDayFor, validateFoodPass } from './domain/mealPass'
-import type { FoodPassResult, FoodPassStatus } from './domain/mealPass'
+import type { FoodPassResult, FoodPassStatus, QrPayload } from './domain/mealPass'
 import { mealSessionByKey, mealSessionGroups, mealSessions } from './domain/mealSessions'
 import {
   hasNocoDbConfig,
@@ -98,6 +100,10 @@ function App() {
   const [freshnessError, setFreshnessError] = useState('')
   const [qrMakerOpen, setQrMakerOpen] = useState(false)
   const [qrEmail, setQrEmail] = useState('')
+  const [manualOpen, setManualOpen] = useState(false)
+  const [manualEmail, setManualEmail] = useState('')
+  const [manualScan, setManualScan] = useState<CurrentScan | null>(null)
+  const [manualChecking, setManualChecking] = useState(false)
   const lockedRef = useRef(false)
   const releaseTimerRef = useRef<number | undefined>(undefined)
   const syncInFlightRef = useRef(false)
@@ -108,6 +114,17 @@ function App() {
     setCurrentScan(scan)
     setRecentScans((items) => [scan, ...items].slice(0, 10))
   }, [])
+
+  const selectedTargetScanFields = useMemo(
+    () =>
+      selectedTarget.kind === 'meal'
+        ? {
+            mealSessionKey: selectedMeal.key,
+            mealSessionLabel: selectedMeal.label,
+          }
+        : {},
+    [selectedMeal.key, selectedMeal.label, selectedTarget.kind],
+  )
 
   const clearReleaseTimer = useCallback(() => {
     if (releaseTimerRef.current !== undefined) {
@@ -250,22 +267,56 @@ function App() {
     void syncQueuedWrites(true)
   }
 
-  const handleRawScan = useCallback(
-    async (raw: string) => {
-      if (lockedRef.current || sessionState !== 'scanning') {
-        return
+  const validateParsedScan = useCallback(
+    async (raw: string, parsed: QrPayload, scanId: string): Promise<ScanEvent> => {
+      const validationSnapshot = hasNocoDbConfig() ? await refreshSnapshotForScan() : snapshot
+      if (hasNocoDbConfig() && !validationSnapshot) {
+        throw new Error('No local DB snapshot available')
       }
 
-      lockedRef.current = true
-      setLocked(true)
+      const validation =
+        hasNocoDbConfig() && validationSnapshot
+          ? selectedTarget.kind === 'arrival'
+            ? validateOfflineArrival(validationSnapshot, parsed, serviceDay)
+            : validateOfflineScan(validationSnapshot, parsed, selectedMeal, serviceDay)
+          : {
+              result:
+                selectedTarget.kind === 'arrival'
+                  ? validateOfflineArrival(snapshot ?? demoSnapshot(serviceDay), parsed, serviceDay).result
+                  : await validateFoodPass(parsed, serviceDay, selectedMeal),
+              snapshot: snapshot ?? demoSnapshot(serviceDay),
+              pendingCount,
+            }
+
+      if (validation.snapshot) {
+        setSnapshot(validation.snapshot)
+      }
+      setPendingCount(validation.pendingCount)
+
+      const finalScan = {
+        ...validation.result,
+        id: scanId,
+        raw,
+      }
+
+      if (validation.result.status === 'ok') {
+        playScanSuccessFeedback()
+      }
+
+      return finalScan
+    },
+    [pendingCount, refreshSnapshotForScan, selectedMeal, selectedTarget.kind, serviceDay, snapshot],
+  )
+
+  const validateRawValue = useCallback(
+    async (raw: string, scanId: string, onChecking?: (scan: CurrentScan) => void): Promise<ScanEvent> => {
       void syncQueuedWrites(false)
 
-      const scanId = crypto.randomUUID()
-      let parsed
+      let parsed: QrPayload
       try {
         parsed = parseQrPayload(raw)
       } catch (error) {
-        rememberScan({
+        return {
           id: scanId,
           raw,
           status: 'error',
@@ -273,15 +324,8 @@ function App() {
           message: error instanceof Error ? error.message : 'QR invalide',
           serviceDay,
           token: raw,
-          ...(selectedTarget.kind === 'meal'
-            ? {
-                mealSessionKey: selectedMeal.key,
-                mealSessionLabel: selectedMeal.label,
-              }
-            : {}),
-        })
-        scheduleRelease()
-        return
+          ...selectedTargetScanFields,
+        }
       }
 
       const pendingScan: ScanEvent = {
@@ -292,51 +336,15 @@ function App() {
         message: 'Validation locale',
         serviceDay,
         token: parsed.token,
-        ...(selectedTarget.kind === 'meal'
-          ? {
-              mealSessionKey: selectedMeal.key,
-              mealSessionLabel: selectedMeal.label,
-            }
-          : {}),
+        ...selectedTargetScanFields,
       }
 
-      setCurrentScan({ ...pendingScan, status: 'checking' })
+      onChecking?.({ ...pendingScan, status: 'checking' })
 
       try {
-        const validationSnapshot = hasNocoDbConfig() ? await refreshSnapshotForScan() : snapshot
-        if (hasNocoDbConfig() && !validationSnapshot) {
-          throw new Error('No local DB snapshot available')
-        }
-
-        const validation =
-          hasNocoDbConfig() && validationSnapshot
-            ? selectedTarget.kind === 'arrival'
-              ? validateOfflineArrival(validationSnapshot, parsed, serviceDay)
-              : validateOfflineScan(validationSnapshot, parsed, selectedMeal, serviceDay)
-            : {
-                result:
-                  selectedTarget.kind === 'arrival'
-                    ? validateOfflineArrival(snapshot ?? demoSnapshot(serviceDay), parsed, serviceDay).result
-                    : await validateFoodPass(parsed, serviceDay, selectedMeal),
-                snapshot: snapshot ?? demoSnapshot(serviceDay),
-                pendingCount,
-              }
-
-        if (validation.snapshot) {
-          setSnapshot(validation.snapshot)
-        }
-        setPendingCount(validation.pendingCount)
-        rememberScan({
-          ...validation.result,
-          id: pendingScan.id,
-          raw,
-        })
-
-        if (validation.result.status === 'ok') {
-          playScanSuccessFeedback()
-        }
+        return await validateParsedScan(raw, parsed, scanId)
       } catch (error) {
-        rememberScan({
+        return {
           id: pendingScan.id,
           raw,
           status: 'error',
@@ -344,29 +352,55 @@ function App() {
           message: error instanceof Error ? error.message : 'Validation failed',
           serviceDay,
           token: parsed.token,
-          ...(selectedTarget.kind === 'meal'
-            ? {
-                mealSessionKey: selectedMeal.key,
-                mealSessionLabel: selectedMeal.label,
-              }
-            : {}),
-        })
+          ...selectedTargetScanFields,
+        }
+      }
+    },
+    [selectedTargetScanFields, serviceDay, syncQueuedWrites, validateParsedScan],
+  )
+
+  const handleRawScan = useCallback(
+    async (raw: string) => {
+      if (lockedRef.current || sessionState !== 'scanning') {
+        return
+      }
+
+      lockedRef.current = true
+      setLocked(true)
+      const scanId = crypto.randomUUID()
+      try {
+        const finalScan = await validateRawValue(raw, scanId, setCurrentScan)
+        rememberScan(finalScan)
       } finally {
         scheduleRelease()
       }
     },
-    [
-      pendingCount,
-      rememberScan,
-      refreshSnapshotForScan,
-      scheduleRelease,
-      selectedMeal,
-      selectedTarget,
-      serviceDay,
-      sessionState,
-      snapshot,
-      syncQueuedWrites,
-    ],
+    [rememberScan, scheduleRelease, sessionState, validateRawValue],
+  )
+
+  const submitManualEmail = useCallback(
+    async (event: FormEvent<HTMLFormElement>) => {
+      event.preventDefault()
+      if (manualChecking) {
+        return
+      }
+
+      const raw = manualEmail.trim()
+      if (!raw) {
+        return
+      }
+
+      const scanId = crypto.randomUUID()
+      setManualChecking(true)
+      try {
+        const finalScan = await validateRawValue(raw, scanId, setManualScan)
+        setManualScan(finalScan)
+        rememberScan(finalScan)
+      } finally {
+        setManualChecking(false)
+      }
+    },
+    [manualChecking, manualEmail, rememberScan, validateRawValue],
   )
 
   const scanner = useCapgoQrScanner({
@@ -400,19 +434,20 @@ function App() {
   }, [])
 
   useEffect(() => {
-    if (!qrMakerOpen) {
+    if (!qrMakerOpen && !manualOpen) {
       return
     }
 
     const closeOnEscape = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
         setQrMakerOpen(false)
+        setManualOpen(false)
       }
     }
 
     window.addEventListener('keydown', closeOnEscape)
     return () => window.removeEventListener('keydown', closeOnEscape)
-  }, [qrMakerOpen])
+  }, [manualOpen, qrMakerOpen])
 
   const expectedMealCount = useMemo(
     () =>
@@ -456,6 +491,8 @@ function App() {
   const currentDetail = currentScan
     ? scanDetailText(currentScan)
     : scannerErrorText(scanner.error) ?? 'QR email dans le cadre'
+  const manualStatus = manualScan?.status ?? 'checking'
+  const ManualIcon = manualScan ? statusIcon[manualStatus] : UserPlus
   const headerTitle = sessionState === 'scanning' ? selectedTarget.label : 'Festival Food Scan'
   const headerSubtitle = sessionState === 'scanning' ? 'Scan session active' : serviceDay
   const syncStatus = refreshingDb ? 'refreshing' : freshnessError ? 'stale' : pendingCount > 0 ? 'queued' : 'synced'
@@ -557,6 +594,17 @@ function App() {
               <RefreshCw size={17} aria-hidden="true" />
               Sync DB
             </button>
+            <button
+              className="secondary-action manual-action"
+              type="button"
+              onClick={() => {
+                setManualOpen(true)
+                setManualScan(null)
+              }}
+            >
+              <UserPlus size={17} aria-hidden="true" />
+              Ajout manuel
+            </button>
             <button className="secondary-action qr-action" type="button" onClick={() => setQrMakerOpen(true)}>
               <QrCode size={17} aria-hidden="true" />
               QR invité
@@ -621,6 +669,67 @@ function App() {
             )}
           </aside>
         </>
+      )}
+
+      {manualOpen && (
+        <div className="qr-modal-backdrop" role="presentation" onMouseDown={() => setManualOpen(false)}>
+          <section
+            className="qr-modal manual-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="manual-add-title"
+            onMouseDown={(event) => event.stopPropagation()}
+          >
+            <div className="qr-modal-header">
+              <div>
+                <h2 id="manual-add-title">Ajout manuel</h2>
+                <p>{selectedTarget.label}</p>
+              </div>
+              <button className="icon-button" type="button" onClick={() => setManualOpen(false)} aria-label="Fermer">
+                <X size={17} aria-hidden="true" />
+              </button>
+            </div>
+
+            <form className="manual-form" onSubmit={submitManualEmail}>
+              <label className="qr-input-label" htmlFor="manual-add-email">
+                Email
+              </label>
+              <div className="qr-input-row">
+                <Mail size={17} aria-hidden="true" />
+                <input
+                  id="manual-add-email"
+                  type="email"
+                  inputMode="email"
+                  autoCapitalize="none"
+                  autoComplete="email"
+                  spellCheck={false}
+                  placeholder="email@exemple.com"
+                  value={manualEmail}
+                  onChange={(event) => setManualEmail(event.target.value)}
+                />
+              </div>
+
+              <button
+                className={`primary-action manual-submit ${manualChecking ? 'loading' : ''}`}
+                type="submit"
+                disabled={manualChecking || !manualEmail.trim()}
+              >
+                {manualChecking ? <Loader2 size={17} aria-hidden="true" /> : <UserPlus size={17} aria-hidden="true" />}
+                Valider
+              </button>
+            </form>
+
+            <div className={`result-strip manual-result ${manualScan ? manualStatus : 'idle'}`} aria-live="polite">
+              <span className="result-icon">
+                <ManualIcon size={22} aria-hidden="true" />
+              </span>
+              <div className="result-copy">
+                <strong>{manualScan ? statusLabel[manualStatus] : 'Prêt'}</strong>
+                <span>{manualScan ? scanDetailText(manualScan) : `Contrôle ${selectedTarget.label}`}</span>
+              </div>
+            </div>
+          </section>
+        </div>
       )}
 
       {qrMakerOpen && (
