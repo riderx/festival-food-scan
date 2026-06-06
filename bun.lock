@@ -8,10 +8,13 @@
         "@capacitor/android": "^8.4.0",
         "@capacitor/cli": "^8.4.0",
         "@capacitor/core": "^8.4.0",
+        "@capacitor/haptics": "^8.0.2",
         "@capacitor/ios": "^8.4.0",
         "@capgo/camera-preview": "^8.4.0",
+        "@capgo/capacitor-native-audio": "^8.4.7",
         "@capgo/capacitor-network-diagnostics": "^8.0.2",
         "@capgo/capacitor-updater": "^8.47.7",
+        "better-qr": "^0.1.1",
         "lucide-react": "^1.17.0",
         "react": "^19.2.7",
         "react-dom": "^19.2.7",
@@ -90,9 +93,13 @@
 
     "@capacitor/core": ["@capacitor/core@8.4.0", "", { "dependencies": { "tslib": "^2.1.0" } }, "sha512-LrS1xPIrqLtJABBIPDGXxxKmI9OyesrzWw8DiHbxhSC9JoiLUleUAJlX1a0LWIVLRbuY4Szgf9huFeRqYH2SAQ=="],
 
+    "@capacitor/haptics": ["@capacitor/haptics@8.0.2", "", { "peerDependencies": { "@capacitor/core": ">=8.0.0" } }, "sha512-c2hZzRR5Fk1tbTvhG1jhh2XBAf3EhnIerMIb2sl7Mt41Gxx1fhBJFDa0/BI1IbY4loVepyyuqNC9820/GZuoWQ=="],
+
     "@capacitor/ios": ["@capacitor/ios@8.4.0", "", { "peerDependencies": { "@capacitor/core": "^8.4.0" } }, "sha512-tnwstEdbTJ2nHAfoAwnurXgYRscWeLY+IIGdz69o24gN2Crfj9Xc0TWo8L5uFLF1LmpbUywH1IT0U1oHV8c+CA=="],
 
     "@capgo/camera-preview": ["@capgo/camera-preview@8.4.0", "", { "peerDependencies": { "@capacitor/core": ">=8.0.0" } }, "sha512-yKebVLTNLz7soD8bprhe2IqqtfY309w1Je0Jb/zVjCjlsXnSxc0tMqIkXVN1Qh/gmef0/BVruN1uEehscxAAIA=="],
+
+    "@capgo/capacitor-native-audio": ["@capgo/capacitor-native-audio@8.4.7", "", { "peerDependencies": { "@capacitor/core": ">=8.0.0" } }, "sha512-BzmMFQN+yeUQdVEHnTb2n9t0YdjdebDtwDd2onIiqgGom/d5CGoAXWIoHWcR6bUht8OF2z8dr+rZt0ZzJqhyrg=="],
 
     "@capgo/capacitor-network-diagnostics": ["@capgo/capacitor-network-diagnostics@8.0.2", "", { "peerDependencies": { "@capacitor/core": ">=8.0.0" } }, "sha512-tdwrLznIMSLI+ZfsdUWlDmbGWbV+Msekew4aRb7Oco105IvTV1bfa1LfyLiVeuw2S0ZgmsqBD1n7ZtnNkAk6+w=="],
 
@@ -353,6 +360,8 @@
     "base64-js": ["base64-js@1.5.1", "", {}, "sha512-AKpaYlHn8t4SVbOHCy+b5+KKgvR4vrsD8vbvrbiQJps7fKDTkjkDry6ji0rUJjC0kzbNePLwzxq8iypo41qeWA=="],
 
     "baseline-browser-mapping": ["baseline-browser-mapping@2.10.33", "", { "bin": { "baseline-browser-mapping": "dist/cli.cjs" } }, "sha512-bA6+tcSLpz2tIEdDXZPpPTIuxBcC4+w6SieaYyfigIa4h8GlFxbA17v22Vx3JUtuZQj9SgOsnbK+aTBzyDyEuw=="],
+
+    "better-qr": ["better-qr@0.1.1", "", {}, "sha512-DE2bUFHqglXOOoLDwh4x43FKFN7i7MjyCBvaMKvILU9V3rueG4G411RBSTyEnxfjRbYwfxPTZ/HboNNBHPTqpw=="],
 
     "bidi-js": ["bidi-js@1.0.3", "", { "dependencies": { "require-from-string": "^2.0.2" } }, "sha512-RKshQI1R3YQ+n9YJz2QQ147P66ELpa1FQEg20Dk8oW9t2KgLbpDLLp9aGZ7y8WHSshDknG0bknqGw5/tyCs5tw=="],
 

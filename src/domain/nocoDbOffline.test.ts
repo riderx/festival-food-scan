@@ -65,7 +65,46 @@ describe('offline NocoDB scan validation', () => {
     )
 
     expect(result.result.status).toBe('needs_payment')
+    expect(result.result.message).toBe(`Payé, mais aucun repas n'est coché pour ${mealSession.label}`)
     expect(result.pendingCount).toBe(0)
+  })
+
+  it('explains when a matching row exists but payment is missing', () => {
+    const result = validateOfflineArrival(
+      snapshotWithRecords([record({ id: 1, paymentDate: undefined })]),
+      { raw: 'ada@example.com', token: 'ada@example.com' },
+      '2026-06-05',
+    )
+
+    expect(result.result).toMatchObject({
+      status: 'needs_payment',
+      message: 'Fiche trouvée, mais Date paiement est vide',
+      personLabel: 'Ada',
+    })
+  })
+
+  it('explains when the person paid for another meal', () => {
+    const otherMeal = mealSessions[1]
+    const result = validateOfflineScan(
+      snapshotWithRecords([
+        record({
+          id: 1,
+          entitlements: {
+            [mealSession.key]: false,
+            [otherMeal.key]: true,
+          },
+        }),
+      ]),
+      { raw: 'ada@example.com', token: 'ada@example.com' },
+      mealSession,
+      '2026-06-05',
+    )
+
+    expect(result.result).toMatchObject({
+      status: 'needs_payment',
+      message: `Payé, mais pas pour ${mealSession.label}. Inclus : ${otherMeal.label}`,
+      personLabel: 'Ada',
+    })
   })
 
   it('uses fresh NocoDB rows to catch a scan from another phone', async () => {

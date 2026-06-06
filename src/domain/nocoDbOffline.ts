@@ -265,7 +265,7 @@ export function validateOfflineScan(
           payload,
           serviceDay,
           `All ${eligibleRecords.length} pass${eligibleRecords.length === 1 ? '' : 'es'} for ${mealSession.label} are used`,
-          email,
+          eligibleRecords[0].personLabel,
           mealSession,
         ),
         usedAt: latestScan,
@@ -276,7 +276,14 @@ export function validateOfflineScan(
   if (!availableRecord) {
     return unchanged(
       snapshot,
-      result('needs_payment', payload, serviceDay, `No paid pass for ${mealSession.label}`, email, mealSession),
+      result(
+        'needs_payment',
+        payload,
+        serviceDay,
+        mealBlockMessage(matchingRecords, mealSession),
+        matchingRecords[0].personLabel,
+        mealSession,
+      ),
     )
   }
 
@@ -351,13 +358,16 @@ export function validateOfflineArrival(
         payload,
         serviceDay,
         `All ${paidRecords.length} arrival pass${paidRecords.length === 1 ? '' : 'es'} are already used`,
-        email,
+        paidRecords[0].personLabel,
       ),
     )
   }
 
   if (!availableRecord) {
-    return unchanged(snapshot, arrivalResult('needs_payment', payload, serviceDay, 'Payment missing', email))
+    return unchanged(
+      snapshot,
+      arrivalResult('needs_payment', payload, serviceDay, arrivalBlockMessage(matchingRecords), matchingRecords[0].personLabel),
+    )
   }
 
   const scannedAt = formatNocoDbDateTime(new Date())
@@ -659,6 +669,38 @@ function applyPendingScans(snapshot: ScanSessionSnapshot): ScanSessionSnapshot {
       }
     }),
   }
+}
+
+function mealBlockMessage(records: StoredMealRecord[], mealSession: MealSession): string {
+  const paidRecords = records.filter((record) => record.paymentDate)
+  if (paidRecords.length === 0) {
+    return 'Fiche trouvée, mais Date paiement est vide'
+  }
+
+  const includedMeals = mealSessions.filter((session) =>
+    paidRecords.some((record) => record.entitlements[session.key] === true),
+  )
+
+  if (includedMeals.length === 0) {
+    return `Payé, mais aucun repas n'est coché pour ${mealSession.label}`
+  }
+
+  return `Payé, mais pas pour ${mealSession.label}. Inclus : ${formatMealList(includedMeals)}`
+}
+
+function arrivalBlockMessage(records: StoredMealRecord[]): string {
+  return records.some((record) => record.paymentDate)
+    ? "Payé, mais aucune entrée n'est disponible"
+    : 'Fiche trouvée, mais Date paiement est vide'
+}
+
+function formatMealList(sessions: MealSession[]): string {
+  const labels = sessions.map((session) => session.label)
+  if (labels.length <= 3) {
+    return labels.join(', ')
+  }
+
+  return `${labels.slice(0, 3).join(', ')} +${labels.length - 3}`
 }
 
 function arrivalResult(

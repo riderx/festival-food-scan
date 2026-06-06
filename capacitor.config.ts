@@ -13,6 +13,9 @@ const config: CapacitorConfig = {
     CameraPreview: {
       disableAudio: true,
     },
+    NativeAudio: {
+      hls: false,
+    },
   },
 }
 

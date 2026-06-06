@@ -9,9 +9,11 @@ android {
 
 apply from: "../capacitor-cordova-android-plugins/cordova.variables.gradle"
 dependencies {
+    implementation project(':capacitor-haptics')
     implementation project(':capgo-camera-preview')
-    implementation project(':capgo-capacitor-updater')
+    implementation project(':capgo-capacitor-native-audio')
     implementation project(':capgo-capacitor-network-diagnostics')
+    implementation project(':capgo-capacitor-updater')
 
 }
 

@@ -2,11 +2,17 @@
 include ':capacitor-android'
 project(':capacitor-android').projectDir = new File('../node_modules/@capacitor/android/capacitor')
 
+include ':capacitor-haptics'
+project(':capacitor-haptics').projectDir = new File('../node_modules/@capacitor/haptics/android')
+
 include ':capgo-camera-preview'
 project(':capgo-camera-preview').projectDir = new File('../node_modules/@capgo/camera-preview/android')
 
-include ':capgo-capacitor-updater'
-project(':capgo-capacitor-updater').projectDir = new File('../node_modules/@capgo/capacitor-updater/android')
+include ':capgo-capacitor-native-audio'
+project(':capgo-capacitor-native-audio').projectDir = new File('../node_modules/@capgo/capacitor-native-audio/android')
 
 include ':capgo-capacitor-network-diagnostics'
 project(':capgo-capacitor-network-diagnostics').projectDir = new File('../node_modules/@capgo/capacitor-network-diagnostics/android')
+
+include ':capgo-capacitor-updater'
+project(':capgo-capacitor-updater').projectDir = new File('../node_modules/@capgo/capacitor-updater/android')

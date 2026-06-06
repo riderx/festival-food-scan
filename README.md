@@ -10,9 +10,15 @@ Scan session page:
 
 ![Festival Food Scan scan session page](docs/scan-session-screenshot.png)
 
+Guest QR fallback:
+
+![Festival Food Scan guest QR generator](docs/qr-generator-screenshot.png)
+
 The scanner uses Capgo Camera Preview (`@capgo/camera-preview`) with its native `barcodeScanner` QR feature. It does not use the basic Capacitor Camera API.
 
 Network status uses Capgo Network Diagnostics (`@capgo/capacitor-network-diagnostics`) internally for sync retries. The UI only shows the sync queue state.
+
+Successful scans play a short bundled confirmation sound through Capgo Native Audio (`@capgo/capacitor-native-audio`) and trigger native haptics through `@capacitor/haptics`. Feedback is fired in parallel after validation, so it does not slow the scanner.
 
 ## Current NocoDB Table
 
@@ -32,14 +38,15 @@ The app expects the QR code text to be the guest email. If several rows have the
 2. Staff starts the scan session.
 3. The app checks whether the network is usable. No network, no internet, captive portal, constrained data, very low speed, or low speed all switch quickly to local cache mode.
 4. If the network is usable, the app downloads the NocoDB rows and applies any queued local scans.
-5. If the network is not usable or NocoDB times out, the app starts from cached rows without blocking the scanner.
-6. The camera stays active for repeated scans.
-7. Every QR scan tries to refresh NocoDB first so another phone's recent scans are visible.
-8. If that refresh fails or is too slow, validation continues from the local cached rows and the sync pill shows `Local DB`.
-9. A successful scan is saved locally immediately and queued for NocoDB. Arrival scans set `Arrivé`; meal scans set the selected `Scanned ...` timestamp and `Arrivé`.
-10. The app retries queued writes at session start, after each scan, when the network is usable, and when staff taps `Sync DB`.
-11. If internet is offline or NocoDB rejects a write, scanning continues and the write stays queued.
-12. To change the meal, staff leaves the scan session and chooses another meal.
+5. The scan session count reads from the downloaded snapshot, so reopening a meal shows scans already synced by other phones.
+6. If the network is not usable or NocoDB times out, the app starts from cached rows without blocking the scanner.
+7. The camera stays active for repeated scans.
+8. Every QR scan tries to refresh NocoDB first so another phone's recent scans are visible.
+9. If that refresh fails or is too slow, validation continues from the local cached rows and the sync pill shows `Local DB`.
+10. A successful scan is saved locally immediately and queued for NocoDB. Arrival scans set `Arrivé`; meal scans set the selected `Scanned ...` timestamp and `Arrivé`.
+11. The app retries queued writes at session start, after each scan, when the network is usable, and when staff taps `Sync DB`.
+12. If internet is offline or NocoDB rejects a write, scanning continues and the write stays queued.
+13. To change the meal, staff leaves the scan session and chooses another meal.
 
 ## Validation Rules
 
@@ -62,6 +69,8 @@ For a selected meal, the app checks the matching row fields:
 | `Non payé` | No row for that email is both paid and entitled for the selected meal. |
 | `Inconnu` | No row exists for the scanned email. |
 | `Erreur` | Required scan timestamp columns are missing or the QR is invalid. |
+
+When a matching row exists but cannot be validated, the scan card explains whether `Date paiement` is empty, the guest paid for another meal, or no meal checkbox is enabled.
 
 ## Required DB Shape
 
@@ -169,6 +178,8 @@ End-to-end send flow:
 5. At the festival, staff picks `Entrée festival` or one meal and starts a scan session.
 6. Staff scans the guest QR code.
 7. The app consumes one eligible row for that email and queues the `Arrivé` or `Scanned ...` write.
+
+If a guest cannot find their QR code, staff can open `QR invité` from the setup screen, type the guest email, and show the generated QR code. The generated QR contains only the normalized email text.
 
 ## Offline Behavior
 

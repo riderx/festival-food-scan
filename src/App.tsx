@@ -5,11 +5,15 @@ import CloudCheck from 'lucide-react/dist/esm/icons/cloud-check.mjs'
 import CloudUpload from 'lucide-react/dist/esm/icons/cloud-upload.mjs'
 import DatabaseZap from 'lucide-react/dist/esm/icons/database-zap.mjs'
 import Loader2 from 'lucide-react/dist/esm/icons/loader-2.mjs'
+import Mail from 'lucide-react/dist/esm/icons/mail.mjs'
+import QrCode from 'lucide-react/dist/esm/icons/qr-code.mjs'
 import RefreshCw from 'lucide-react/dist/esm/icons/refresh-cw.mjs'
 import ScanLine from 'lucide-react/dist/esm/icons/scan-line.mjs'
 import ShieldX from 'lucide-react/dist/esm/icons/shield-x.mjs'
 import TriangleAlert from 'lucide-react/dist/esm/icons/triangle-alert.mjs'
 import Utensils from 'lucide-react/dist/esm/icons/utensils.mjs'
+import X from 'lucide-react/dist/esm/icons/x.mjs'
+import { toSvg } from 'better-qr'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import './App.css'
 import { parseQrPayload, serviceDayFor, validateFoodPass } from './domain/mealPass'
@@ -29,6 +33,7 @@ import type { ScanSessionSnapshot } from './domain/nocoDbOffline'
 import { useCapgoQrScanner } from './hooks/useCapgoQrScanner'
 import { useNetworkDiagnostics } from './hooks/useNetworkDiagnostics'
 import type { NetworkDiagnosticsState } from './hooks/useNetworkDiagnostics'
+import { playScanSuccessFeedback, preloadScanFeedback } from './hooks/useScanFeedback'
 
 type ScanEvent = FoodPassResult & {
   id: string
@@ -39,17 +44,8 @@ type CurrentScan = Omit<ScanEvent, 'status'> & {
   status: FoodPassStatus | 'checking'
 }
 
-type ScanStats = Record<FoodPassStatus, number>
 type SessionState = 'setup' | 'loading' | 'scanning'
 type ScanTargetKind = 'arrival' | 'meal'
-
-const emptyStats: ScanStats = {
-  ok: 0,
-  already_used: 0,
-  needs_payment: 0,
-  not_found: 0,
-  error: 0,
-}
 
 const statusIcon = {
   checking: Loader2,
@@ -100,6 +96,8 @@ function App() {
   const [syncing, setSyncing] = useState(false)
   const [refreshingDb, setRefreshingDb] = useState(false)
   const [freshnessError, setFreshnessError] = useState('')
+  const [qrMakerOpen, setQrMakerOpen] = useState(false)
+  const [qrEmail, setQrEmail] = useState('')
   const lockedRef = useRef(false)
   const releaseTimerRef = useRef<number | undefined>(undefined)
   const syncInFlightRef = useRef(false)
@@ -334,8 +332,8 @@ function App() {
           raw,
         })
 
-        if (validation.result.status === 'ok' && 'vibrate' in navigator) {
-          navigator.vibrate(80)
+        if (validation.result.status === 'ok') {
+          playScanSuccessFeedback()
         }
       } catch (error) {
         rememberScan({
@@ -397,17 +395,24 @@ function App() {
 
   useEffect(() => clearReleaseTimer, [clearReleaseTimer])
 
-  const stats = useMemo(
-    () =>
-      recentScans.reduce<ScanStats>(
-        (acc, scan) => ({
-          ...acc,
-          [scan.status]: acc[scan.status] + 1,
-        }),
-        { ...emptyStats },
-      ),
-    [recentScans],
-  )
+  useEffect(() => {
+    preloadScanFeedback()
+  }, [])
+
+  useEffect(() => {
+    if (!qrMakerOpen) {
+      return
+    }
+
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setQrMakerOpen(false)
+      }
+    }
+
+    window.addEventListener('keydown', closeOnEscape)
+    return () => window.removeEventListener('keydown', closeOnEscape)
+  }, [qrMakerOpen])
 
   const expectedMealCount = useMemo(
     () =>
@@ -418,9 +423,39 @@ function App() {
       ).length ?? 0,
     [selectedMeal.key, selectedTarget.kind, snapshot],
   )
+  const validatedCount = useMemo(
+    () =>
+      snapshot?.records.filter((record) =>
+        selectedTarget.kind === 'arrival'
+          ? Boolean(record.paymentDate && record.arrived)
+          : Boolean(record.paymentDate && record.entitlements[selectedMeal.key] === true && record.scannedAt[selectedMeal.key]),
+      ).length ?? 0,
+    [selectedMeal.key, selectedTarget.kind, snapshot],
+  )
+  const normalizedQrEmail = useMemo(() => normalizeQrEmail(qrEmail), [qrEmail])
+  const qrEmailHasValue = qrEmail.trim().length > 0
+  const qrEmailIsValid = !qrEmailHasValue || Boolean(normalizedQrEmail)
+  const guestQrDataUrl = useMemo(() => {
+    if (!normalizedQrEmail) {
+      return ''
+    }
+
+    const svg = toSvg(normalizedQrEmail, {
+      errorCorrectionLevel: 'M',
+      margin: 2,
+      moduleSize: 8,
+      foreground: '#0f172a',
+      background: '#ffffff',
+      title: 'Guest QR',
+    })
+    return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`
+  }, [normalizedQrEmail])
 
   const currentStatus = currentScan?.status ?? 'error'
   const CurrentIcon = currentScan ? statusIcon[currentStatus] : ScanLine
+  const currentDetail = currentScan
+    ? scanDetailText(currentScan)
+    : scannerErrorText(scanner.error) ?? 'QR email dans le cadre'
   const headerTitle = sessionState === 'scanning' ? selectedTarget.label : 'Festival Food Scan'
   const headerSubtitle = sessionState === 'scanning' ? 'Scan session active' : serviceDay
   const syncStatus = refreshingDb ? 'refreshing' : freshnessError ? 'stale' : pendingCount > 0 ? 'queued' : 'synced'
@@ -522,6 +557,10 @@ function App() {
               <RefreshCw size={17} aria-hidden="true" />
               Sync DB
             </button>
+            <button className="secondary-action qr-action" type="button" onClick={() => setQrMakerOpen(true)}>
+              <QrCode size={17} aria-hidden="true" />
+              QR invité
+            </button>
           </div>
 
           <div className="setup-meta">
@@ -550,14 +589,14 @@ function App() {
               </span>
               <div className="result-copy">
                 <strong>{currentScan ? statusLabel[currentStatus] : scanner.active ? 'Prêt à scanner' : 'Caméra en cours'}</strong>
-                <span>{currentScan?.personLabel ?? currentScan?.message ?? scanner.error ?? 'QR email dans le cadre'}</span>
+                <span>{currentDetail}</span>
               </div>
               <span className={`ready-badge ${locked ? 'hold' : 'ready'}`}>{locked ? 'Hold' : 'Ready'}</span>
             </div>
 
             <div className="stats-grid" aria-label="Session stats">
               <div>
-                <strong>{stats.ok}</strong>
+                <strong>{validatedCount}</strong>
                 <span>Validés</span>
               </div>
               <div>
@@ -575,13 +614,62 @@ function App() {
                 {recentScans.map((scan) => (
                   <div className={`recent-row ${scan.status}`} key={scan.id}>
                     <span>{statusLabel[scan.status]}</span>
-                    <strong>{scan.personLabel ?? scan.token}</strong>
+                    <strong>{recentScanText(scan)}</strong>
                   </div>
                 ))}
               </div>
             )}
           </aside>
         </>
+      )}
+
+      {qrMakerOpen && (
+        <div className="qr-modal-backdrop" role="presentation" onMouseDown={() => setQrMakerOpen(false)}>
+          <section
+            className="qr-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="qr-maker-title"
+            onMouseDown={(event) => event.stopPropagation()}
+          >
+            <div className="qr-modal-header">
+              <div>
+                <h2 id="qr-maker-title">QR invité</h2>
+                <p>{normalizedQrEmail || 'Email invité'}</p>
+              </div>
+              <button className="icon-button" type="button" onClick={() => setQrMakerOpen(false)} aria-label="Fermer">
+                <X size={17} aria-hidden="true" />
+              </button>
+            </div>
+
+            <label className="qr-input-label" htmlFor="guest-qr-email">
+              Email
+            </label>
+            <div className="qr-input-row">
+              <Mail size={17} aria-hidden="true" />
+              <input
+                id="guest-qr-email"
+                type="email"
+                inputMode="email"
+                autoCapitalize="none"
+                autoComplete="email"
+                spellCheck={false}
+                placeholder="email@exemple.com"
+                value={qrEmail}
+                onChange={(event) => setQrEmail(event.target.value)}
+              />
+            </div>
+            {qrEmailHasValue && !qrEmailIsValid && <p className="qr-error">Email invalide</p>}
+
+            <div className={`qr-preview ${guestQrDataUrl ? 'ready' : ''}`} aria-live="polite">
+              {guestQrDataUrl ? (
+                <img src={guestQrDataUrl} alt={`QR ${normalizedQrEmail}`} />
+              ) : (
+                <QrCode size={76} aria-hidden="true" />
+              )}
+            </div>
+          </section>
+        </div>
       )}
     </main>
   )
@@ -600,4 +688,29 @@ function demoSnapshot(serviceDay: string): ScanSessionSnapshot {
     source: 'demo',
     records: [],
   }
+}
+
+function normalizeQrEmail(value: string): string {
+  const email = value.trim().toLowerCase()
+  return email.includes('@') && email.includes('.') ? email : ''
+}
+
+function scanDetailText(scan: CurrentScan): string {
+  if (scan.status === 'ok' || scan.status === 'checking') {
+    return scan.personLabel ?? scan.message ?? scan.token
+  }
+
+  return scan.message || scan.personLabel || scan.token
+}
+
+function recentScanText(scan: ScanEvent): string {
+  if (scan.status === 'ok') {
+    return scan.personLabel ?? scan.token
+  }
+
+  return scan.message || scan.personLabel || scan.token
+}
+
+function scannerErrorText(error: string | null): string | null {
+  return error || null
 }

@@ -12,9 +12,11 @@ let package = Package(
     ],
     dependencies: [
         .package(url: "https://github.com/ionic-team/capacitor-swift-pm.git", exact: "8.4.0"),
+        .package(name: "CapacitorHaptics", path: "../../../node_modules/@capacitor/haptics"),
         .package(name: "CapgoCameraPreview", path: "../../../node_modules/@capgo/camera-preview"),
-        .package(name: "CapgoCapacitorUpdater", path: "../../../node_modules/@capgo/capacitor-updater"),
-        .package(name: "CapgoCapacitorNetworkDiagnostics", path: "../../../node_modules/@capgo/capacitor-network-diagnostics")
+        .package(name: "CapgoCapacitorNativeAudio", path: "../../../node_modules/@capgo/capacitor-native-audio"),
+        .package(name: "CapgoCapacitorNetworkDiagnostics", path: "../../../node_modules/@capgo/capacitor-network-diagnostics"),
+        .package(name: "CapgoCapacitorUpdater", path: "../../../node_modules/@capgo/capacitor-updater")
     ],
     targets: [
         .target(
@@ -22,9 +24,11 @@ let package = Package(
             dependencies: [
                 .product(name: "Capacitor", package: "capacitor-swift-pm"),
                 .product(name: "Cordova", package: "capacitor-swift-pm"),
+                .product(name: "CapacitorHaptics", package: "CapacitorHaptics"),
                 .product(name: "CapgoCameraPreview", package: "CapgoCameraPreview"),
-                .product(name: "CapgoCapacitorUpdater", package: "CapgoCapacitorUpdater"),
-                .product(name: "CapgoCapacitorNetworkDiagnostics", package: "CapgoCapacitorNetworkDiagnostics")
+                .product(name: "CapgoCapacitorNativeAudio", package: "CapgoCapacitorNativeAudio"),
+                .product(name: "CapgoCapacitorNetworkDiagnostics", package: "CapgoCapacitorNetworkDiagnostics"),
+                .product(name: "CapgoCapacitorUpdater", package: "CapgoCapacitorUpdater")
             ]
         )
     ]
