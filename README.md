@@ -14,6 +14,8 @@ Guest QR fallback:
 
 ![Festival Food Scan guest QR generator](docs/qr-generator-screenshot.png)
 
+The guest QR generator checks the NocoDB list before showing a QR code. If the email does not exist in the list, the app shows `Utilisateur absent de la liste` instead of generating a code for the wrong mailbox.
+
 Manual validation:
 
 ![Festival Food Scan manual validation](docs/manual-validation-screenshot.png)

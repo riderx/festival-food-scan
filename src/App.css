@@ -83,7 +83,8 @@
 .setup-meta,
 .icon-button,
 .qr-modal-header,
-.qr-input-row {
+.qr-input-row,
+.qr-lookup-status {
   display: flex;
   align-items: center;
 }
@@ -491,6 +492,74 @@ button {
   color: #fdba74;
   font-size: 13px;
   font-weight: 700;
+}
+
+.qr-check-form {
+  display: grid;
+  gap: 8px;
+}
+
+.qr-lookup-submit {
+  width: 100%;
+  justify-content: center;
+  min-height: 42px;
+  margin-top: 4px;
+  background: #f97316;
+  border-color: #fb923c;
+  color: #1f1308;
+}
+
+.qr-lookup-submit svg {
+  color: #1f1308;
+}
+
+.qr-lookup-submit.loading svg {
+  animation: spin 0.9s linear infinite;
+}
+
+.qr-lookup-status {
+  min-height: 42px;
+  gap: 8px;
+  margin-top: 12px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid rgba(226, 232, 240, 0.14);
+  background: rgba(15, 23, 42, 0.72);
+  color: #cbd5e1;
+  font-size: 13px;
+  font-weight: 700;
+  box-sizing: border-box;
+}
+
+.qr-lookup-status svg {
+  flex: 0 0 auto;
+}
+
+.qr-lookup-status span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.qr-lookup-status.checking {
+  color: #bfdbfe;
+  border-color: rgba(147, 197, 253, 0.3);
+}
+
+.qr-lookup-status.checking svg {
+  animation: spin 0.9s linear infinite;
+}
+
+.qr-lookup-status.found {
+  color: #bbf7d0;
+  border-color: rgba(134, 239, 172, 0.3);
+}
+
+.qr-lookup-status.missing,
+.qr-lookup-status.error {
+  color: #fecaca;
+  border-color: rgba(252, 165, 165, 0.34);
 }
 
 .qr-preview {

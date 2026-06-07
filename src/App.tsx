@@ -9,6 +9,7 @@ import Mail from 'lucide-react/dist/esm/icons/mail.mjs'
 import QrCode from 'lucide-react/dist/esm/icons/qr-code.mjs'
 import RefreshCw from 'lucide-react/dist/esm/icons/refresh-cw.mjs'
 import ScanLine from 'lucide-react/dist/esm/icons/scan-line.mjs'
+import Search from 'lucide-react/dist/esm/icons/search.mjs'
 import ShieldX from 'lucide-react/dist/esm/icons/shield-x.mjs'
 import TriangleAlert from 'lucide-react/dist/esm/icons/triangle-alert.mjs'
 import Utensils from 'lucide-react/dist/esm/icons/utensils.mjs'
@@ -48,6 +49,12 @@ type CurrentScan = Omit<ScanEvent, 'status'> & {
 
 type SessionState = 'setup' | 'loading' | 'scanning'
 type ScanTargetKind = 'arrival' | 'meal'
+type QrLookupStatus = 'idle' | 'checking' | 'found' | 'missing' | 'error'
+
+type QrLookupState = {
+  status: QrLookupStatus
+  message: string
+}
 
 const statusIcon = {
   checking: Loader2,
@@ -100,6 +107,7 @@ function App() {
   const [freshnessError, setFreshnessError] = useState('')
   const [qrMakerOpen, setQrMakerOpen] = useState(false)
   const [qrEmail, setQrEmail] = useState('')
+  const [qrLookup, setQrLookup] = useState<QrLookupState>({ status: 'idle', message: '' })
   const [manualOpen, setManualOpen] = useState(false)
   const [manualEmail, setManualEmail] = useState('')
   const [manualScan, setManualScan] = useState<CurrentScan | null>(null)
@@ -107,6 +115,7 @@ function App() {
   const lockedRef = useRef(false)
   const releaseTimerRef = useRef<number | undefined>(undefined)
   const syncInFlightRef = useRef(false)
+  const qrLookupRequestRef = useRef(0)
   const network = useNetworkDiagnostics()
   const refreshNetwork = network.refresh
 
@@ -403,6 +412,62 @@ function App() {
     [manualChecking, manualEmail, rememberScan, validateRawValue],
   )
 
+  const updateQrEmail = useCallback((value: string) => {
+    qrLookupRequestRef.current += 1
+    setQrEmail(value)
+    setQrLookup({ status: 'idle', message: '' })
+  }, [])
+
+  const submitQrLookup = useCallback(
+    async (event: FormEvent<HTMLFormElement>) => {
+      event.preventDefault()
+
+      const requestId = qrLookupRequestRef.current + 1
+      qrLookupRequestRef.current = requestId
+      const setCurrentQrLookup = (nextLookup: QrLookupState) => {
+        if (qrLookupRequestRef.current === requestId) {
+          setQrLookup(nextLookup)
+        }
+      }
+      const email = normalizeQrEmail(qrEmail)
+      if (!qrEmail.trim()) {
+        setCurrentQrLookup({ status: 'idle', message: '' })
+        return
+      }
+
+      if (!email) {
+        setCurrentQrLookup({ status: 'error', message: 'Email invalide.' })
+        return
+      }
+
+      setCurrentQrLookup({ status: 'checking', message: 'Recherche dans la liste.' })
+
+      try {
+        const lookupSnapshot = hasNocoDbConfig() ? await refreshSnapshotForScan() : snapshot
+        if (!lookupSnapshot) {
+          setCurrentQrLookup({ status: 'error', message: 'Liste indisponible. Lance Sync DB puis réessaie.' })
+          return
+        }
+
+        const matchingRecords = lookupSnapshot.records.filter((record) => record.email === email)
+        if (matchingRecords.length === 0) {
+          setCurrentQrLookup({ status: 'missing', message: 'Utilisateur absent de la liste.' })
+          return
+        }
+
+        const primaryLabel = matchingRecords[0].personLabel || email
+        const suffix = matchingRecords.length > 1 ? `, ${matchingRecords.length} fiches trouvées.` : '.'
+        setCurrentQrLookup({ status: 'found', message: `${primaryLabel}${suffix}` })
+      } catch (error) {
+        setCurrentQrLookup({
+          status: 'error',
+          message: error instanceof Error ? error.message : 'Recherche impossible.',
+        })
+      }
+    },
+    [qrEmail, refreshSnapshotForScan, snapshot],
+  )
+
   const scanner = useCapgoQrScanner({
     enabled: sessionState === 'scanning',
     onScan: handleRawScan,
@@ -471,7 +536,7 @@ function App() {
   const qrEmailHasValue = qrEmail.trim().length > 0
   const qrEmailIsValid = !qrEmailHasValue || Boolean(normalizedQrEmail)
   const guestQrDataUrl = useMemo(() => {
-    if (!normalizedQrEmail) {
+    if (!normalizedQrEmail || qrLookup.status !== 'found') {
       return ''
     }
 
@@ -484,7 +549,15 @@ function App() {
       title: 'Guest QR',
     })
     return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`
-  }, [normalizedQrEmail])
+  }, [normalizedQrEmail, qrLookup.status])
+  const QrLookupIcon =
+    qrLookup.status === 'checking'
+      ? Loader2
+      : qrLookup.status === 'found'
+        ? CheckCircle2
+        : qrLookup.status === 'missing' || qrLookup.status === 'error'
+          ? ShieldX
+          : Search
 
   const currentStatus = currentScan?.status ?? 'error'
   const CurrentIcon = currentScan ? statusIcon[currentStatus] : ScanLine
@@ -698,6 +771,7 @@ function App() {
                 <Mail size={17} aria-hidden="true" />
                 <input
                   id="manual-add-email"
+                  name="email"
                   type="email"
                   inputMode="email"
                   autoCapitalize="none"
@@ -751,24 +825,43 @@ function App() {
               </button>
             </div>
 
-            <label className="qr-input-label" htmlFor="guest-qr-email">
-              Email
-            </label>
-            <div className="qr-input-row">
-              <Mail size={17} aria-hidden="true" />
-              <input
-                id="guest-qr-email"
-                type="email"
-                inputMode="email"
-                autoCapitalize="none"
-                autoComplete="email"
-                spellCheck={false}
-                placeholder="email@exemple.com"
-                value={qrEmail}
-                onChange={(event) => setQrEmail(event.target.value)}
-              />
-            </div>
-            {qrEmailHasValue && !qrEmailIsValid && <p className="qr-error">Email invalide</p>}
+            <form className="qr-check-form" onSubmit={submitQrLookup}>
+              <label className="qr-input-label" htmlFor="guest-qr-email">
+                Email
+              </label>
+              <div className="qr-input-row">
+                <Mail size={17} aria-hidden="true" />
+                <input
+                  id="guest-qr-email"
+                  name="email"
+                  type="email"
+                  inputMode="email"
+                  autoCapitalize="none"
+                  autoComplete="email"
+                  spellCheck={false}
+                  placeholder="email@exemple.com"
+                  value={qrEmail}
+                  onChange={(event) => updateQrEmail(event.target.value)}
+                />
+              </div>
+              {qrEmailHasValue && !qrEmailIsValid && <p className="qr-error">Email invalide.</p>}
+
+              <button
+                className={`primary-action qr-lookup-submit ${qrLookup.status === 'checking' ? 'loading' : ''}`}
+                type="submit"
+                disabled={qrLookup.status === 'checking' || !qrEmail.trim()}
+              >
+                {qrLookup.status === 'checking' ? <Loader2 size={17} aria-hidden="true" /> : <Search size={17} aria-hidden="true" />}
+                Vérifier
+              </button>
+            </form>
+
+            {qrLookup.status !== 'idle' && (
+              <div className={`qr-lookup-status ${qrLookup.status}`} aria-live="polite">
+                <QrLookupIcon size={17} aria-hidden="true" />
+                <span>{qrLookup.message}</span>
+              </div>
+            )}
 
             <div className={`qr-preview ${guestQrDataUrl ? 'ready' : ''}`} aria-live="polite">
               {guestQrDataUrl ? (
