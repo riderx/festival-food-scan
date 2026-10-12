@@ -21,7 +21,7 @@
     "@capgo/capacitor-native-audio": "^8.4.7",
     "@capgo/capacitor-network-diagnostics": "^8.0.2",
     "@capgo/capacitor-updater": "^8.47.7",
-    "better-qr": "^0.1.1",
+    "better-qr": "^0.2.0",
     "lucide-react": "^1.17.0",
     "react": "^19.2.7",
     "react-dom": "^19.2.7"

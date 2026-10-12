@@ -14,7 +14,7 @@
         "@capgo/capacitor-native-audio": "^8.4.7",
         "@capgo/capacitor-network-diagnostics": "^8.0.2",
         "@capgo/capacitor-updater": "^8.47.7",
-        "better-qr": "^0.1.1",
+        "better-qr": "^0.2.0",
         "lucide-react": "^1.17.0",
         "react": "^19.2.7",
         "react-dom": "^19.2.7",
@@ -361,7 +361,7 @@
 
     "baseline-browser-mapping": ["baseline-browser-mapping@2.10.33", "", { "bin": { "baseline-browser-mapping": "dist/cli.cjs" } }, "sha512-bA6+tcSLpz2tIEdDXZPpPTIuxBcC4+w6SieaYyfigIa4h8GlFxbA17v22Vx3JUtuZQj9SgOsnbK+aTBzyDyEuw=="],
 
-    "better-qr": ["better-qr@0.1.1", "", {}, "sha512-DE2bUFHqglXOOoLDwh4x43FKFN7i7MjyCBvaMKvILU9V3rueG4G411RBSTyEnxfjRbYwfxPTZ/HboNNBHPTqpw=="],
+    "better-qr": ["better-qr@0.2.0", "", {}, "sha512-zyIBWeuGP1eHgYX4DiY9ycPIzCq54PzTZVa84bc5ieVJLfz4UkxABVnsJK8RKjgsp/MMQBA8tDP7fjIz9SR4mg=="],
 
     "bidi-js": ["bidi-js@1.0.3", "", { "dependencies": { "require-from-string": "^2.0.2" } }, "sha512-RKshQI1R3YQ+n9YJz2QQ147P66ELpa1FQEg20Dk8oW9t2KgLbpDLLp9aGZ7y8WHSshDknG0bknqGw5/tyCs5tw=="],
 
